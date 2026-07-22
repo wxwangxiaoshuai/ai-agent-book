@@ -1,0 +1,252 @@
+## Function Calling 机制详解
+
+M5 的 Agent 用文本解析（正则提取 `Action:`）来调用工具——这很透明但不可靠。Function Calling 是 API 层面的工具调用机制：**模型直接输出结构化的工具调用指令，不需要你解析文本**。它是生产级 Agent 的标配。
+
+### 没有 Function Calling 的世界
+
+```python
+# 不用 Function Calling：模型输出文本，你用正则解析
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "北京今天天气怎么样？"}],
+)
+text = response.choices[0].message.content
+# "我需要搜索天气信息。Action: search, Action Input: 北京天气"
+# → 你需要正则提取 Action 和 Action Input → 脆弱、容易出错
+```
+
+### 有 Function Calling 的世界
+
+```python
+# 用 Function Calling：模型直接输出结构化工具调用
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "北京今天天气怎么样？"}],
+    tools=[{
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "获取指定城市的天气",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string", "description": "城市名"},
+                },
+                "required": ["city"],
+            },
+        },
+    }],
+)
+# 模型直接返回结构化的工具调用：
+# tool_calls: [{name: "get_weather", arguments: {"city": "北京"}}]
+# → 不需要正则解析，直接用
+```
+
+### Function Calling 的数据流
+
+```
+1. 开发者定义工具 Schema（JSON Schema 格式）
+       ↓
+2. 用户提问 → 连同 tools 一起发送给 API
+       ↓
+3. 模型决策：需要调工具吗？调哪个？参数是什么？
+       ↓
+4. 模型返回 tool_call（结构化的工具调用指令）
+       ↓
+5. 开发者执行工具，获得结果
+       ↓
+6. 把结果以 role=tool 发回给模型
+       ↓
+7. 模型基于工具结果生成最终回答
+```
+
+### 完整的 Function Calling 循环
+
+```python
+import json
+from openai import OpenAI
+
+client = OpenAI()
+
+# 1. 定义工具
+def get_weather(city: str) -> str:
+    """模拟天气查询"""
+    weather_db = {"北京": "晴 35°C", "上海": "多云 32°C", "成都": "雨 28°C"}
+    return weather_db.get(city, f"{city}：暂无天气数据")
+
+def get_time(timezone: str) -> str:
+    """模拟时间查询"""
+    from datetime import datetime
+    return f"{timezone} 当前时间: {datetime.now().strftime('%H:%M')}"
+
+# 2. 定义工具 Schema
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "获取指定城市的当前天气",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string", "description": "城市名称，如'北京'"},
+                },
+                "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_time",
+            "description": "获取指定时区的当前时间",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone": {"type": "string", "description": "时区，如'Asia/Shanghai'"},
+                },
+                "required": ["timezone"],
+            },
+        },
+    },
+]
+
+# 3. 工具执行映射
+TOOL_MAP = {
+    "get_weather": get_weather,
+    "get_time": get_time,
+}
+
+# 4. Function Calling 循环
+def chat_with_tools(user_input: str, max_rounds: int = 5) -> str:
+    messages = [{"role": "user", "content": user_input}]
+
+    for round_num in range(max_rounds):
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=TOOLS,
+            temperature=0,
+        )
+        msg = response.choices[0].message
+
+        # 如果模型没有调用工具 → 直接回答了
+        if not msg.tool_calls:
+            return msg.content
+
+        # 把模型的工具调用加入历史
+        messages.append(msg)
+
+        # 执行每个工具调用
+        for tool_call in msg.tool_calls:
+            fn_name = tool_call.function.name
+            fn_args = json.loads(tool_call.function.arguments)
+
+            print(f"调用工具: {fn_name}({fn_args})")
+
+            if fn_name in TOOL_MAP:
+                result = TOOL_MAP[fn_name](**fn_args)
+            else:
+                result = f"错误: 未知工具 '{fn_name}'"
+
+            print(f"工具结果: {result}")
+
+            # 把工具结果发回给模型
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result),
+            })
+
+    return "达到最大轮次限制。"
+
+# 运行
+print(chat_with_tools("北京和上海现在的天气怎么样？现在几点了？"))
+```
+
+### OpenAI vs Anthropic 的 Function Calling
+
+两家的机制本质相同，但 API 格式有差异：
+
+| 差异点 | OpenAI | Anthropic |
+|--------|--------|-----------|
+| 参数名 | `tools` | `tools` |
+| 模型返回 | `message.tool_calls` | `content` 中的 `tool_use` block |
+| 工具结果 | `role: "tool"` | `role: "user"` + `tool_result` block |
+| 并行调用 | 支持（多个 tool_calls） | 支持（多个 tool_use blocks） |
+| 强制调用 | `tool_choice: {"type": "function", ...}` | `tool_choice: {"type": "tool", ...}` |
+
+**Anthropic 版本**：
+
+```python
+from anthropic import Anthropic
+
+claude = Anthropic()
+
+response = claude.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    tools=[{
+        "name": "get_weather",
+        "description": "获取指定城市的当前天气",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "城市名"},
+            },
+            "required": ["city"],
+        },
+    }],
+    messages=[{"role": "user", "content": "北京天气怎么样？"}],
+)
+
+# 解析工具调用
+for block in response.content:
+    if block.type == "tool_use":
+        tool_name = block.name
+        tool_input = block.input
+        result = get_weather(**tool_input)
+
+        # 把结果发回
+        response2 = claude.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            tools=[...],  # 同上
+            messages=[
+                {"role": "user", "content": "北京天气怎么样？"},
+                {"role": "assistant", "content": response.content},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
+                ]},
+            ],
+        )
+        print(response2.content[0].text)
+```
+
+### tool_choice：控制模型的工具使用
+
+```python
+# auto（默认）：模型自己决定调不调工具
+response = client.chat.completions.create(..., tool_choice="auto")
+
+# none：禁止调工具（强制直接回答）
+response = client.chat.completions.create(..., tool_choice="none")
+
+# required：必须调工具（不能直接回答）
+response = client.chat.completions.create(..., tool_choice="required")
+
+# 指定工具：必须调某个特定工具
+response = client.chat.completions.create(
+    ...,
+    tool_choice={"type": "function", "function": {"name": "get_weather"}},
+)
+```
+
+### 要点总结
+
+- Function Calling 是 API 层面的工具调用——模型直接输出结构化指令，不需要文本解析
+- 数据流：定义 Schema → 模型决策 → 返回 tool_call → 执行工具 → 结果发回 → 模型生成回答
+- OpenAI 和 Anthropic 的机制相同但 API 格式不同（tool_calls vs tool_use block）
+- tool_choice 控制模型行为：auto（自决）、none（禁用）、required（必调）、指定工具
+- Function Calling 比文本解析可靠得多——模型不会"幻觉工具名"，参数一定是合法 JSON
+- M5 的 ReAct Agent 可以直接用 Function Calling 替换文本解析，循环逻辑不变
