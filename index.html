@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="AI Agent 大师之路 —— 从零到一的 AI Agent 开发实战课程，覆盖 LLM 基础、Prompt 工程、Agent 架构、多智能体、MCP、实战项目。"
+    />
+    <title>AI Agent 大师之路 · 从小白到专家的实战课程</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Apply theme before React mounts to avoid a flash of the wrong theme.
+      // Priority: saved choice > system preference. Dark is the default (no class).
+      (function () {
+        try {
+          var saved = localStorage.getItem('theme');
+          if (saved === 'light' || saved === 'dark') {
+            if (saved === 'light') document.documentElement.classList.add('light');
+          } else if (
+            window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: light)').matches
+          ) {
+            document.documentElement.classList.add('light');
+          }
+        } catch (e) {
+          /* localStorage unavailable — fall back to dark default */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,228 @@
+## Prompt 测试与版本管理
+
+代码要测试，Prompt 也一样。一个"感觉变好了"的 Prompt 改动，可能在某些边界情况下反而退化了。Prompt 测试的目的就是：**用量化指标替代直觉判断**。
+
+### 为什么 Prompt 需要测试
+
+典型场景：你调了一个 Prompt，感觉输出质量提升了。但上线后才发现——它在 80% 的情况下确实变好了，但在另外 20% 的情况下完全失效了。
+
+Prompt 测试的价值：
+- 改 Prompt 时，跑一遍测试就知道有没有"退化"
+- 团队协作时，新成员不会因为不懂"历史包袱"而改坏 Prompt
+- 模型升级时，测试集可以帮你判断新模型是否真的更好
+
+### 构建测试集
+
+测试集 = 一组输入 + 期望输出 + 评估标准。
+
+```python
+test_cases = [
+    {
+        "id": "tc_001",
+        "input": "这个产品的功能很强大，但价格太贵了。",
+        "expected": {
+            "sentiment": "neutral",
+            "keywords": ["功能强大", "价格贵"],
+        },
+        "description": "混合情感应分类为中性",
+    },
+    {
+        "id": "tc_002",
+        "input": "非常好用，推荐！",
+        "expected": {
+            "sentiment": "positive",
+        },
+        "description": "纯正面评价",
+    },
+    {
+        "id": "tc_003",
+        "input": "",  # 空输入
+        "expected": {
+            "sentiment": "neutral",
+            "keywords": [],
+        },
+        "description": "空输入边界情况",
+    },
+]
+```
+
+测试集的构建原则：
+- 覆盖正常输入（Happy Path）
+- 覆盖边界情况（空输入、超长输入、特殊字符）
+- 覆盖失败案例（历史上出过错的输入）
+- 每组 20-50 条测试用例即可起步
+
+### 评估指标
+
+Prompt 的评估通常分为两类：**客观指标**和**主观指标**。
+
+**客观指标**（可自动计算）：
+- 格式合法性：输出是否为合法 JSON
+- 字段完整性：是否包含所有必需字段
+- 字段类型：字段值类型是否正确
+- 枚举匹配：分类结果是否在预期的枚举值中
+
+**主观指标**（需要人工或 LLM 评判）：
+- 准确性：回答是否正确
+- 相关性：回答是否与问题相关
+- 完整性：是否覆盖了所有要点
+- 简洁性：是否有冗余信息
+
+**LLM-as-Judge**：用另一个模型（通常是更强的模型）做裁判，对输出打分。
+
+```python
+def llm_judge(question: str, answer: str, reference: str) -> dict:
+    """用 LLM 评估回答质量"""
+    judge_prompt = f"""你是一个严格的评审。请评估以下回答的质量。
+
+问题：{question}
+参考答案：{reference}
+待评估回答：{answer}
+
+请从以下维度打分（1-5 分）：
+1. 准确性：回答是否与参考答案一致
+2. 完整性：是否覆盖了所有关键点
+3. 简洁性：是否有冗余信息
+
+输出 JSON：
+{{"accuracy": 1-5, "completeness": 1-5, "conciseness": 1-5, "total": 1-5, "comment": "简要评语"}}
+"""
+    return call_llm(judge_prompt)
+```
+
+### 自动化测试流水线
+
+```python
+import json
+
+def run_prompt_tests(prompt_template: str, test_cases: list[dict]) -> dict:
+    """对 Prompt 模板运行完整的测试套件"""
+    results = {"passed": 0, "failed": 0, "details": []}
+    
+    for tc in test_cases:
+        # 1. 渲染 Prompt
+        prompt = prompt_template.format(**tc.get("variables", {}))
+        
+        # 2. 调用模型
+        response = call_llm(prompt)
+        
+        # 3. 解析输出
+        try:
+            output = json.loads(response)
+        except json.JSONDecodeError:
+            results["failed"] += 1
+            results["details"].append({
+                "id": tc["id"],
+                "status": "FAIL",
+                "reason": "JSON 解析失败",
+                "raw": response[:200],
+            })
+            continue
+        
+        # 4. 逐字段校验
+        failures = []
+        for field, expected in tc["expected"].items():
+            if field not in output:
+                failures.append(f"缺少字段 '{field}'")
+            elif output[field] != expected:
+                failures.append(f"字段 '{field}': 期望 {expected}, 实际 {output[field]}")
+        
+        if failures:
+            results["failed"] += 1
+            results["details"].append({
+                "id": tc["id"],
+                "status": "FAIL",
+                "reasons": failures,
+            })
+        else:
+            results["passed"] += 1
+            results["details"].append({
+                "id": tc["id"],
+                "status": "PASS",
+            })
+    
+    results["pass_rate"] = results["passed"] / len(test_cases)
+    return results
+```
+
+### Prompt 版本管理
+
+把 Prompt 当作代码，用 Git 管理。
+
+**推荐的文件结构**：
+```
+prompts/
+  sentiment_analysis/
+    v1.0.json        # Prompt 版本 1.0
+    v1.1.json        # 改进版
+    test_cases.json  # 测试用例
+    eval_results.md  # 各版本评估对比
+```
+
+**Prompt 文件格式**（JSON 或 YAML）：
+```json
+{
+  "name": "sentiment_analysis",
+  "version": "1.1",
+  "created": "2025-07-22",
+  "author": "zhangsan",
+  "model": "claude-sonnet-5",
+  "system_prompt": "你是一个情感分析专家。分析用户输入的情感倾向...",
+  "user_prompt_template": "请分析以下文本的情感：\n\n{text}",
+  "parameters": {
+    "temperature": 0.0,
+    "max_tokens": 200
+  },
+  "changelog": "v1.1: 修复了混合情感被误判为 negative 的问题，增加了 neutral 的判定规则"
+}
+```
+
+**版本对比**：
+```
+                    v1.0    v1.1
+准确率              85%     92%
+JSON 解析成功率      95%     98%
+平均 Token 消耗      320     280
+混合情感误判率       12%     3%
+```
+
+### CI/CD 集成
+
+把 Prompt 测试集成到 CI 流水线中：
+
+```yaml
+# .github/workflows/prompt-test.yml
+name: Prompt Tests
+
+on:
+  pull_request:
+    paths:
+      - 'prompts/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Prompt Tests
+        run: python scripts/test_prompts.py
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Check Pass Rate
+        run: |
+          PASS_RATE=$(cat results.json | jq '.pass_rate')
+          if (( $(echo "$PASS_RATE < 0.90" | bc -l) )); then
+            echo "Pass rate $PASS_RATE below 90% threshold"
+            exit 1
+          fi
+```
+
+> 把 Prompt 测试作为 PR 的 CI 检查项。改 Prompt 必须通过测试，不通过测试的改动不能合并。
+
+### 要点总结
+
+- Prompt 测试用量化指标替代直觉判断，防止"改好了 A 但改坏了 B"
+- 测试集覆盖正常输入、边界情况、历史失败案例
+- LLM-as-Judge 用于评估主观指标（准确性、完整性、简洁性）
+- 用 Git 管理 Prompt 版本，记录每次改动的 changelog 和评估结果
+- 把 Prompt 测试集成到 CI，设置通过率阈值（如 90%）作为质量门禁

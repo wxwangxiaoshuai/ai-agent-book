@@ -1,0 +1,258 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Design tokens — DARK (default, = original design baseline)
+   Values are "R G B" triplets consumed via rgb(var(--x) / <alpha>).
+   ============================================================ */
+:root {
+  color-scheme: dark;
+
+  /* ink neutral scale — dark-first */
+  --ink-50: 247 247 248;
+  --ink-100: 236 236 239;
+  --ink-200: 212 212 216;
+  --ink-300: 161 161 170;
+  --ink-400: 113 113 122;
+  --ink-500: 82 82 91;
+  --ink-600: 63 63 70;
+  --ink-700: 39 39 42;
+  --ink-800: 24 24 27;
+  --ink-900: 9 9 11;
+  --ink-950: 5 5 7;
+
+  /* brand blue scale */
+  --brand-50: 238 244 255;
+  --brand-100: 218 230 255;
+  --brand-200: 188 210 255;
+  --brand-300: 142 180 255;
+  --brand-400: 89 139 255;
+  --brand-500: 53 99 255;
+  --brand-600: 29 68 245;
+  --brand-700: 22 51 225;
+  --brand-800: 24 45 182;
+  --brand-900: 26 44 143;
+  --brand-950: 20 27 87;
+
+  /* theme-aware ambient */
+  --glow-1: 53 99 255;
+  --glow-2: 89 139 255;
+  --glow-alpha-1: 0.16;
+  --glow-alpha-2: 0.12;
+  --grid-line: 255 255 255;
+  --grid-alpha: 0.04;
+  --btn-hover-text: 255 255 255;
+}
+
+/* ============================================================
+   Design tokens — LIGHT override
+   ink class names keep their MEANING (bg-ink-950 = page bg,
+   text-ink-100 = light text) but values flip so dark-on-light
+   works. Mirror the dark scale with light-friendly tweaks.
+   ============================================================ */
+html.light {
+  color-scheme: light;
+
+  /* ink neutral scale — flipped for light backgrounds */
+  --ink-50: 5 5 7; /* deepest -> used for text/headings */
+  --ink-100: 9 9 11;
+  --ink-200: 24 24 27;
+  --ink-300: 39 39 42;
+  --ink-400: 82 82 91;
+  --ink-500: 113 113 122;
+  --ink-600: 161 161 170;
+  --ink-700: 212 212 216;
+  --ink-800: 236 236 239;
+  --ink-900: 244 244 245;
+  --ink-950: 255 255 255; /* page bg -> near white */
+
+  /* brand stays the same hue, slightly deepened for contrast on white */
+  --brand-50: 238 244 255;
+  --brand-100: 214 234 255;
+  --brand-200: 186 210 255;
+  --brand-300: 121 162 255; /* deeper for readability */
+  --brand-400: 53 99 255;
+  --brand-500: 29 68 245;
+  --brand-600: 22 51 225;
+  --brand-700: 24 45 182;
+  --brand-800: 26 44 143;
+  --brand-900: 20 27 87;
+  --brand-950: 16 21 64;
+
+  --glow-1: 53 99 255;
+  --glow-2: 89 139 255;
+  --glow-alpha-1: 0.10;
+  --glow-alpha-2: 0.08;
+  --grid-line: 0 0 0;
+  --grid-alpha: 0.05;
+  --btn-hover-text: 9 9 11;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  /* NOTE: do NOT use @apply bg-ink-950 here — Tailwind's @apply bakes the
+     rgb(var(--ink-950)) template into a literal value, defeating theme
+     switching. Write the var() reference directly so it resolves per-theme. */
+  background-color: rgb(var(--ink-950) / 1);
+  color: rgb(var(--ink-100) / 1);
+  @apply antialiased;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgb(var(--glow-1) / var(--glow-alpha-1)), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgb(var(--glow-2) / var(--glow-alpha-2)), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--ink-700) / 1);
+  @apply rounded-full border-2;
+  border-color: rgb(var(--ink-950) / 1);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--ink-600) / 1);
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-12;
+  }
+
+  .card {
+    @apply rounded-2xl backdrop-blur-sm transition-colors;
+    border-color: rgb(var(--ink-800) / 1);
+    background-color: rgb(var(--ink-900) / 0.6);
+  }
+
+  .card-hover {
+    border-color: rgb(var(--ink-800) / 1);
+  }
+  .card-hover:hover {
+    border-color: rgb(var(--brand-600) / 0.6);
+    background-color: rgb(var(--ink-900) / 0.8);
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn rounded-xl text-white shadow-lg transition-all duration-200;
+    background-color: rgb(var(--brand-600) / 1);
+    --tw-shadow-color: rgb(var(--brand-600) / 0.25);
+  }
+  .btn-primary:hover {
+    background-color: rgb(var(--brand-500) / 1);
+    --tw-shadow-color: rgb(var(--brand-500) / 0.3);
+  }
+
+  .btn-ghost {
+    @apply btn rounded-xl transition-colors;
+    border: 1px solid rgb(var(--ink-700) / 1);
+    background-color: rgb(var(--ink-900) / 0.4);
+    color: rgb(var(--ink-200) / 1);
+  }
+  .btn-ghost:hover {
+    border-color: rgb(var(--ink-600) / 1);
+    background-color: rgb(var(--ink-800) / 0.6);
+    color: rgb(var(--btn-hover-text) / 1);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
+
+  .section-title {
+    /* ink-50 = lightest in dark / darkest in light -> correct heading color both modes */
+    @apply text-3xl font-bold tracking-tight sm:text-4xl;
+    color: rgb(var(--ink-50) / 1);
+  }
+
+  .section-eyebrow {
+    @apply mb-3 inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-widest;
+    color: rgb(var(--brand-400) / 1);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      to right,
+      rgb(var(--brand-300) / 1),
+      rgb(var(--brand-400) / 1),
+      rgb(var(--brand-500) / 1)
+    );
+  }
+
+  .hairline {
+    @apply h-px w-full;
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      rgb(var(--ink-700) / 1),
+      transparent
+    );
+  }
+}
+
+/* Code block styling */
+.code-block {
+  @apply rounded-xl p-4 font-mono text-sm leading-relaxed overflow-x-auto;
+  border: 1px solid rgb(var(--ink-800) / 1);
+  background-color: rgb(var(--ink-950) / 0.8);
+  color: rgb(var(--ink-200) / 1);
+}
+
+.code-block .tok-key {
+  color: rgb(var(--brand-300) / 1);
+}
+.code-block .tok-str {
+  @apply text-emerald-300;
+}
+.code-block .tok-num {
+  @apply text-amber-300;
+}
+.code-block .tok-com {
+  color: rgb(var(--ink-500) / 1);
+  @apply italic;
+}
+.code-block .tok-fn {
+  @apply text-fuchsia-300;
+}
+
+/* Light-mode code highlighting: the dark-mode -300 hues wash out on white,
+   so override each token with a deeper, readable color. */
+html.light .code-block .tok-key {
+  color: rgb(29 68 245); /* brand-600 */
+}
+html.light .code-block .tok-str {
+  color: rgb(4 120 87); /* emerald-700 */
+}
+html.light .code-block .tok-num {
+  color: rgb(180 83 9); /* amber-700 */
+}
+html.light .code-block .tok-com {
+  color: rgb(82 82 91); /* ink-400 */
+}
+html.light .code-block .tok-fn {
+  color: rgb(162 28 175); /* fuchsia-700 */
+}
+
+/* Grid background utility */
+.grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(var(--grid-line) / var(--grid-alpha)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--grid-line) / var(--grid-alpha)) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
