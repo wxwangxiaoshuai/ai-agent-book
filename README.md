@@ -51,6 +51,20 @@ GitHub **不会**自动开启 Pages，必须手动启用一次：
 | `Failed to create deployment (status: 404)` | 同上 | 同上 |
 | Node 20 deprecated 警告 | 来自 GitHub 内置 Action，可忽略 | 不影响部署 |
 
+### 用 API 一次性启用（Settings 页面找不到选项时）
+
+在 https://github.com/settings/tokens 创建 Classic PAT，勾选 **repo** 权限，然后执行：
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer <你的PAT>" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/wxwangxiaoshuai/ai-agent-book/pages \
+  -d '{"build_type":"workflow","source":{"branch":"main","path":"/"}}'
+```
+
+若默认分支是 `master`，把 `branch` 改成 `master`。返回 201 表示成功，再去 Actions 重跑 workflow。
+
 ### 本地预览 Pages 构建
 
 若仓库名不是 `ai-agent-book`，构建时需指定 base path：

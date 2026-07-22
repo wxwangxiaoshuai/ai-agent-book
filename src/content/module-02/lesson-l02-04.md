@@ -57,19 +57,103 @@ response = client.chat.completions.create(
 )
 ```
 
-**Anthropic 结构化输出**：
-```python
-import anthropic
+**OpenAI Structured Outputs**（更推荐）：
 
-response = client.messages.create(
-    model="claude-sonnet-5",
-    max_tokens=1024,
-    system="输出合法的 JSON。",
+OpenAI 支持 `json_schema` 类型，不仅保证输出合法 JSON，还保证**符合你指定的 Schema**：
+
+```python
+response = client.chat.completions.create(
+    model="gpt-4o",
     messages=[{"role": "user", "content": "列出 3 种水果及其颜色"}],
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": "fruit_list",
+            "strict": True,  # 严格模式：模型必须完全遵循 Schema
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "fruits": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "color": {"type": "string"}
+                            },
+                            "required": ["name", "color"]
+                        }
+                    }
+                },
+                "required": ["fruits"]
+            }
+        }
+    },
 )
 ```
 
-JSON Mode 保证输出是合法的 JSON，但不保证符合你指定的 Schema——你需要自己校验字段。
+**Anthropic 结构化输出**：
+
+Anthropic 没有类似 `response_format` 的参数，但有两种方式实现结构化输出：
+
+**方式 A：Tool Use（推荐）**——利用工具调用机制返回结构化数据：
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    tools=[{
+        "name": "extract_fruits",
+        "description": "输出水果列表",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "fruits": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "color": {"type": "string"}
+                        },
+                        "required": ["name", "color"]
+                    }
+                }
+            },
+            "required": ["fruits"]
+        }
+    }],
+    tool_choice={"type": "tool", "name": "extract_fruits"},  # 强制调用此工具
+    messages=[{"role": "user", "content": "列出 3 种水果及其颜色"}],
+)
+
+# 从 tool_use 响应中提取结构化数据
+import json
+tool_result = response.content[1]  # tool_use block
+fruits_data = json.loads(tool_result.input) if isinstance(tool_result.input, str) else tool_result.input
+```
+
+**方式 B：Prefill（预填充）**——在 assistant 消息中预填 `{`，强制模型以 JSON 开头：
+
+```python
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    system="你是一个 JSON 生成器。只输出合法 JSON，不要输出任何其他文字。",
+    messages=[
+        {"role": "user", "content": "列出 3 种水果及其颜色，格式：{\"fruits\": [{\"name\": \"...\", \"color\": \"...\"}]}"},
+        {"role": "assistant", "content": "{"}  # prefill：强制以 { 开头
+    ],
+)
+# 拼接 prefill 和响应
+json_str = "{" + response.content[0].text
+```
+
+> **对比**：Tool Use 方式更可靠（有 Schema 约束），Prefill 方式更轻量但不保证 Schema。生产环境推荐 Tool Use。
 
 ### 方法 3：Function Calling / Tool Use
 
@@ -106,7 +190,9 @@ Function Calling 的优势：
 
 ### 方法 4：instructor 库（推荐）
 
-[instructor](https://github.com/instructor-ai/instructor) 是一个 Python 库，它把 Function Calling 封装成了 Pydantic 模型——写出更自然，校验更可靠。
+[instructor](https://github.com/instructor-ai/instructor) 是一个 Python 库，它把 Function Calling / Tool Use 封装成了 Pydantic 模型——写出更自然，校验更可靠。
+
+**OpenAI + instructor**：
 
 ```python
 import instructor
@@ -130,10 +216,37 @@ print(analysis.complexity)  # "O(2ⁿ)"
 print(analysis.issues)      # ["使用递归导致指数级时间复杂度", "没有缓存中间结果"]
 ```
 
-instructor 还支持：
-- **重试机制**：如果输出不符合 Pydantic 模型，自动重试（可配置重试次数和策略）
+**Anthropic + instructor**：
+
+```python
+import instructor
+from pydantic import BaseModel, Field
+from anthropic import Anthropic
+
+client = instructor.from_anthropic(Anthropic())
+
+class CodeAnalysis(BaseModel):
+    complexity: str = Field(description="时间复杂度")
+    issues: list[str] = Field(description="发现的问题")
+    suggestions: list[str] = Field(description="改进建议")
+
+analysis = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    response_model=CodeAnalysis,
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "分析这段代码：def fib(n): return n if n<2 else fib(n-1)+fib(n-2)"}],
+)
+
+print(analysis.complexity)  # "O(2ⁿ)"
+```
+
+instructor 的核心优势：
+- **自动重试**：如果模型输出不符合 Pydantic 模型，自动把验证错误反馈给模型并重试（可配置重试次数）
 - **流式输出**：对于长列表，可以逐条流式接收
-- **多模型支持**：OpenAI、Anthropic、Gemini 等
+- **多模型支持**：OpenAI、Anthropic、Gemini、Ollama 等
+- **统一接口**：同一套 Pydantic 模型可以切换不同模型后端
+
+> **为什么推荐 instructor**：它把"结构化输出"从"写 Schema + 手动解析 + 处理异常"简化为"定义 Pydantic 模型 + 一行调用"。在 Agent 开发中，几乎所有模型输出都应该走结构化路径。
 
 ### 结构化输出的可靠性对比
 

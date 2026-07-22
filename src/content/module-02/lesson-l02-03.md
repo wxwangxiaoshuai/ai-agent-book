@@ -84,7 +84,7 @@ def self_consistency(question: str, n_samples: int = 5) -> str:
 
 ### ReAct：Reason + Act
 
-ReAct 是 CoT 的进化版——把"推理"和"行动"交织在一起。它是 Agent 的核心范式，我们在模块 3 会深入讲解。
+ReAct 是 CoT 的进化版——把"推理"和"行动"交织在一起。它是 Agent 的核心范式，我们在模块 5（Agent 核心架构）会深入讲解。
 
 ```
 Question: 2024 年诺贝尔物理学奖得主是谁？
@@ -100,6 +100,79 @@ Answer: 2024 年诺贝尔物理学奖授予 John Hopfield 和 Geoffrey Hinton。
 **CoT 与 ReAct 的区别**：
 - CoT：只推理，不行动（适合纯思考任务）
 - ReAct：推理 + 行动交织（适合需要外部信息的任务）
+
+### CoT 的 Token 成本
+
+CoT 让模型"展示推理过程"，这意味着更多的输出 token——直接增加成本和延迟。
+
+```
+不用 CoT：
+  输入: "15 只鸡 8 只兔子共多少条腿？"
+  输出: "62"                          → ~3 token
+
+用 CoT：
+  输入: "15 只鸡 8 只兔子共多少条腿？请一步步思考。"
+  输出: "鸡有2条腿，15只=30条腿..."     → ~80 token
+```
+
+**成本对比**：同一个问题，CoT 的输出 token 约为不用 CoT 的 10-30 倍。对于需要批量处理的场景（如分类 1000 条文本），这个成本差异是显著的。
+
+**工程建议**：对简单任务（分类、提取、翻译）不用 CoT；对复杂推理任务用 CoT 但设置合理的 `max_tokens` 上限，防止推理链无限发散。
+
+### Tree of Thoughts（ToT）
+
+CoT 是线性推理——一条路走到底。Tree of Thoughts 把推理组织成**树形结构**，允许模型在多个分支上并行推理，再选择最优路径。
+
+```
+CoT（线性）：           ToT（树形）：
+A → B → C → 答案        A → B → C → 答案 X
+                        A → B → D → 答案 Y  ← 选最优
+                        A → E → F → 答案 Z
+```
+
+ToT 适合需要"探索多个方案再选最优"的场景（如数学证明、博弈推理），但成本是 CoT 的数倍。日常 Agent 开发中 CoT 足够，ToT 是前沿研究方向的了解性内容。
+
+### Self-Consistency（自一致性）
+
+CoT 有一个问题：**单次推理可能出错**。Self-Consistency 的解法是：让模型多次推理（使用 temperature > 0），然后投票选出最一致的答案。
+
+```
+同一个问题，跑 5 次 CoT（temperature=0.7）：
+
+推理 1：A → B → C → 答案：42
+推理 2：A → B → D → 答案：42
+推理 3：A → E → 答案：37
+推理 4：A → B → C → 答案：42
+推理 5：A → B → C → 答案：42
+
+投票结果：42（4票）> 37（1票）→ 最终答案：42
+```
+
+Self-Consistency 的代价是计算量翻倍（5 次推理 = 5 倍 Token 消耗），但换来了显著的准确性提升。在 GSM8K 上，Self-Consistency 将 CoT 的准确率进一步提升了 10-15 个百分点。
+
+```python
+import re
+
+def extract_final_answer(response: str) -> str:
+    """从 CoT 推理文本中提取最终答案"""
+    # 尝试匹配 "答案：X" 或 "Answer: X" 格式
+    match = re.search(r'(?:答案|Answer)[:\s]*(.+?)(?:\n|$)', response)
+    return match.group(1).strip() if match else response.strip()[-20:]
+
+def self_consistency(question: str, n_samples: int = 5) -> str:
+    """多次采样 + 多数投票"""
+    answers = []
+    for _ in range(n_samples):
+        response = call_llm(
+            prompt=f"{question}\n\nLet's think step by step. 最后用 '答案：' 开头给出最终答案。",
+            temperature=0.7,
+        )
+        answer = extract_final_answer(response)
+        answers.append(answer)
+    return max(set(answers), key=answers.count)
+```
+
+> **适用场景**：Self-Consistency 适合有明确答案的推理任务（数学、逻辑题）。对开放性任务（如创意写作）不适用。
 
 ### CoT 的使用场景与限制
 
@@ -118,11 +191,14 @@ Answer: 2024 年诺贝尔物理学奖授予 John Hopfield 和 Geoffrey Hinton。
 - 推理过程可能是"事后合理化"而非"真实推理"
 - 模型可能编造看似合理但实际错误的推理步骤
 - 长推理链容易发散或自相矛盾
+- CoT 效果与模型规模相关——小模型可能无法受益
 
 ### 要点总结
 
 - CoT 让模型先展示推理过程再给答案，大幅提升复杂推理准确率
 - `Let's think step by step.` 是最简单的 Zero-shot CoT 技巧
+- CoT 的 token 成本是不用 CoT 的 10-30 倍，需权衡
+- Tree of Thoughts 是 CoT 的树形扩展，适合多方案探索但成本更高
 - Self-Consistency 通过多次采样 + 投票进一步提升准确性
-- ReAct 是 CoT 的进化版，将推理和行动交织在一起
-- CoT 不适合简单任务和创意写作，成本（Token 消耗）需要权衡
+- ReAct 是 CoT 的进化版，将推理和行动交织在一起（M5 详解）
+- CoT 不适合简单任务和创意写作，成本需要权衡

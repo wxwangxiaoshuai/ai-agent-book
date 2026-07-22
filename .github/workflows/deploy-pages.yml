@@ -48,6 +48,22 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Verify GitHub Pages is enabled
+        run: |
+          status=$(curl -sS -o /tmp/pages.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages")
+          if [ "$status" != "200" ]; then
+            echo "::error::GitHub Pages 尚未启用（API 返回 $status）。"
+            echo "请打开 https://github.com/${{ github.repository }}/settings/pages"
+            echo "在 Build and deployment → Source 中选择 GitHub Actions，保存后重新运行此 workflow。"
+            echo "私有仓库需要 GitHub Pro 才能使用 Pages。"
+            exit 1
+          fi
+          echo "Pages site is enabled:"
+          cat /tmp/pages.json
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

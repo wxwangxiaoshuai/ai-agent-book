@@ -90,7 +90,60 @@ def llm_judge(question: str, answer: str, reference: str) -> dict:
     return call_llm(judge_prompt)
 ```
 
-### 自动化测试流水线
+**LLM-as-Judge 的已知偏差及规避**：
+
+| 偏差 | 表现 | 规避方法 |
+|------|------|----------|
+| 位置偏差 | 倾向于给靠前的答案更高分 | 随机打乱答案顺序，多次评估取平均 |
+| 冗长偏差 | 倾向于给更长的回答更高分 | 在 Judge Prompt 中明确"长度不作为评分依据" |
+| 自我偏好 | 模型倾向于给自己的输出更高分 | 用不同模型做 Judge（如用 Claude 评估 GPT 的输出） |
+| 过于宽容 | Judge 倾向于给高分 | 设定严格评分标准，要求"只有完全正确才给 5 分" |
+
+### 处理 Flaky Test（不稳定的测试）
+
+LLM 输出具有非确定性——同一个 Prompt 跑两次可能得到不同结果。这会导致测试"时过时不过"（flaky）。
+
+**策略 1：用 temperature=0 降低随机性**
+
+```python
+response = call_llm(prompt, temperature=0, seed=42)  # 尽可能确定性
+```
+
+**策略 2：多次运行取多数结果**
+
+```python
+def stable_test(prompt: str, expected: str, n_runs: int = 3) -> bool:
+    """跑 n 次，超过半数通过才算通过"""
+    passed = sum(1 for _ in range(n_runs) if check_output(call_llm(prompt), expected))
+    return passed >= n_runs // 2 + 1
+```
+
+**策略 3：只测格式，不测内容**
+
+对于创造性输出，只校验格式（是否为合法 JSON、是否包含必需字段），不校验具体内容——因为内容本身没有唯一正确答案。
+
+### 现成工具推荐
+
+不必从零搭建测试框架，以下工具已经解决了 Prompt 测试的大部分痛点：
+
+| 工具 | 特点 | 适用场景 |
+|------|------|----------|
+| [promptfoo](https://promptfoo.dev) | CLI 工具，支持多模型对比、批量测试、CI 集成 | 快速搭建 Prompt 评测流水线 |
+| [DSPy](https://dspy.ai) | 自动优化 Prompt，把 Prompt 工程变成"编译"问题 | 系统性优化 Prompt 参数 |
+| [LangSmith](https://smith.langchain.com) | LangChain 生态的评测平台，可视化 trace + 评测 | 使用 LangChain 的项目 |
+| [promptflow](https://promptflow.azure.com) | 微软出品，可视化 Prompt 开发流水线 | 企业级 Prompt 生命周期管理 |
+
+> **建议起步路径**：先用 promptfoo 搭建最小评测流水线（30 分钟内可以跑通），随着项目复杂化再考虑迁移到更重的平台。
+
+### 要点总结
+
+- Prompt 测试用量化指标替代直觉判断，防止"改好了 A 但改坏了 B"
+- 测试集覆盖正常输入、边界情况、历史失败案例
+- LLM-as-Judge 用于评估主观指标，但需注意位置偏差、冗长偏差等已知问题
+- LLM 的非确定性导致测试 flaky——用 temperature=0、多次运行取多数、只测格式来缓解
+- 用 Git 管理 Prompt 版本，记录每次改动的 changelog 和评估结果
+- 推荐用 promptfoo 快速搭建评测流水线，不必从零开始
+- 把 Prompt 测试集成到 CI，设置通过率阈值（如 90%）作为质量门禁
 
 ```python
 import json
