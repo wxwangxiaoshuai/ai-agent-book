@@ -6,7 +6,10 @@ import { DifficultyBadge, LessonTypeBadge } from '../components/Badges'
 function ModuleCard({ module }: { module: Module }) {
   return (
     <div className="card card-hover overflow-hidden">
-      <div className="border-b border-ink-800 p-6">
+      <Link
+        to={`/curriculum/${module.id}`}
+        className="block border-b border-ink-800 p-6 transition-colors hover:border-brand-500/30"
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-ink-800 text-2xl">
@@ -18,14 +21,16 @@ function ModuleCard({ module }: { module: Module }) {
                 <span>·</span>
                 <span>{module.hours} 小时</span>
               </div>
-              <h3 className="mt-1 text-lg font-bold text-ink-50">{module.title}</h3>
+              <h3 className="mt-1 text-lg font-bold text-ink-50 transition-colors group-hover:text-brand-300">
+                {module.title}
+              </h3>
               <p className="mt-0.5 text-sm text-ink-400">{module.subtitle}</p>
             </div>
           </div>
           <DifficultyBadge level={module.difficulty} />
         </div>
         <p className="mt-4 text-sm leading-relaxed text-ink-400">{module.description}</p>
-      </div>
+      </Link>
 
       <div className="p-6">
         <div className="mb-3 flex items-center justify-between">
@@ -84,7 +89,7 @@ export function CurriculumPage() {
         <span className="section-eyebrow">完整大纲</span>
         <h1 className="section-title">课程大纲</h1>
         <p className="mt-4 text-ink-400">
-          4 大阶段、9 个核心模块、60+ 节精讲课、9 个实战项目。
+          7 大阶段、16 个核心模块、91 节精讲课、16 个实战项目。
           每个模块由"理论 → 实战 → 复盘"构成闭环，模块末尾产出可交付项目。
         </p>
       </div>
