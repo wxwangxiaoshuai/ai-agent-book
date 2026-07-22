@@ -31,7 +31,7 @@ export function ModulePage() {
           课程大纲
         </Link>
         <span>/</span>
-        <span className="text-ink-300">模块 {module.id}</span>
+        <span className="text-ink-300">{module.title}</span>
       </nav>
 
       {/* Header */}
