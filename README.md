@@ -30,14 +30,26 @@ pnpm preview     # 预览构建产物
 
 本项目已配置 GitHub Actions 自动部署，推送到 `main` 或 `master` 分支后会自动构建并发布。
 
-### 首次启用步骤
+### 首次启用步骤（必做，否则 workflow 会 404）
 
-1. 在 GitHub 创建仓库并推送代码（仓库名建议为 `ai-agent-book`，也可使用其他名称）
-2. 进入仓库 **Settings → Pages**
-3. **Build and deployment → Source** 选择 **GitHub Actions**
-4. 推送代码到 `main`/`master`，或在 Actions 页手动运行 **Deploy to GitHub Pages** workflow
+GitHub **不会**自动开启 Pages，必须手动启用一次：
 
-部署完成后访问：`https://<你的用户名>.github.io/<仓库名>/`
+1. 打开 https://github.com/wxwangxiaoshuai/ai-agent-book/settings/pages
+2. 找到 **Build and deployment → Source**
+3. 从下拉框选择 **GitHub Actions**（不要选 “Deploy from a branch”）
+4. 保存后，到 **Actions** 页重新运行 **Deploy to GitHub Pages**
+
+> 若仓库是**私有**的，需要 GitHub Pro 及以上套餐才支持 Pages；公开仓库免费可用。
+
+部署完成后访问：`https://wxwangxiaoshuai.github.io/ai-agent-book/`
+
+### 常见错误
+
+| 报错 | 原因 | 处理 |
+|------|------|------|
+| `Get Pages site failed ... Not Found` | Pages 未启用 | 按上方步骤在 Settings → Pages 选择 GitHub Actions |
+| `Failed to create deployment (status: 404)` | 同上 | 同上 |
+| Node 20 deprecated 警告 | 来自 GitHub 内置 Action，可忽略 | 不影响部署 |
 
 ### 本地预览 Pages 构建
 
