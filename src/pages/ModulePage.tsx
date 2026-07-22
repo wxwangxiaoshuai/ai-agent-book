@@ -126,10 +126,14 @@ export function ModulePage() {
         {/* Sidebar: Project */}
         <aside className="lg:sticky lg:top-24 lg:self-start">
           {module.project ? (
-            <div className="card border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-transparent p-6">
+            <Link
+              to={`/curriculum/${module.id}/project/${module.project.id.toLowerCase()}`}
+              className="card card-hover block border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-transparent p-6"
+            >
               <div className="mb-3 flex items-center gap-2">
                 <span className="text-2xl">🎯</span>
                 <h3 className="text-base font-bold text-ink-50">本模块实战项目</h3>
+                <span className="ml-auto text-xs text-amber-400">查看详情 →</span>
               </div>
               <h4 className="text-lg font-bold text-amber-300">
                 {module.project.title}
@@ -167,7 +171,7 @@ export function ModulePage() {
                 <span className="text-xs text-ink-500">项目难度</span>
                 <DifficultyBadge level={module.project.difficulty} />
               </div>
-            </div>
+            </Link>
           ) : (
             <div className="card p-6 text-sm text-ink-500">本模块无独立项目。</div>
           )}

@@ -131,9 +131,9 @@ body {
   }
 
   .card {
-    @apply rounded-2xl backdrop-blur-sm transition-colors;
+    @apply rounded-2xl transition-colors;
     border-color: rgb(var(--ink-800) / 1);
-    background-color: rgb(var(--ink-900) / 0.6);
+    background-color: rgb(var(--ink-900) / 1);
   }
 
   .card-hover {
@@ -141,7 +141,7 @@ body {
   }
   .card-hover:hover {
     border-color: rgb(var(--brand-600) / 0.6);
-    background-color: rgb(var(--ink-900) / 0.8);
+    background-color: rgb(var(--ink-800) / 0.5);
   }
 
   .btn {

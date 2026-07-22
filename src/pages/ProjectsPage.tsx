@@ -13,10 +13,10 @@ export function ProjectsPage() {
     <div className="container-page py-12 sm:py-16">
       <div className="mx-auto max-w-2xl text-center">
         <span className="section-eyebrow">实战项目</span>
-        <h1 className="section-title">9 个递进式实战项目</h1>
+        <h1 className="section-title">16 个递进式实战项目</h1>
         <p className="mt-4 text-ink-400">
-          每个项目都对应一个学习阶段，从命令行助手一路升级到生产级多 Agent 产品。
-          学完即有 9 个可写进简历的代表作。
+          每个项目都对应一个学习阶段，从命令行助手一路升级到生产级多 Agent 平台。
+          学完即有 16 个可写进简历的代表作。
         </p>
       </div>
 
@@ -90,12 +90,20 @@ export function ProjectsPage() {
                   </div>
                 </div>
 
-                <Link
-                  to={`/curriculum/${p.module}`}
-                  className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-brand-400 transition-colors hover:text-brand-300"
-                >
-                  前往所属模块 <span aria-hidden>→</span>
-                </Link>
+                <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <Link
+                    to={`/curriculum/${p.module}/project/${p.id.toLowerCase()}`}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-amber-400 transition-colors hover:text-amber-300"
+                  >
+                    查看项目详情 <span aria-hidden>→</span>
+                  </Link>
+                  <Link
+                    to={`/curriculum/${p.module}`}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-brand-400 transition-colors hover:text-brand-300"
+                  >
+                    前往所属模块 <span aria-hidden>→</span>
+                  </Link>
+                </div>
               </div>
             </div>
           )
@@ -112,11 +120,11 @@ export function ProjectsPage() {
                 🏆 毕业设计
               </span>
               <h2 className="mt-3 text-2xl font-bold text-ink-50">
-                P9 · 生产级 Agent 产品
+                P16 · 生产级 Agent 产品
               </h2>
               <p className="mt-2 max-w-xl text-sm text-ink-300">
                 综合全书所学的终极挑战：多 Agent 协作 + MCP 工具 + RAG 记忆 + 评测流水线 +
-                全链路可观测 + 安全加固，交付一个可部署的产品。
+                全链路可观测 + 安全加固 + 生产部署架构，交付一个可部署的产品。
               </p>
             </div>
             <Link to="/curriculum/9" className="btn-primary shrink-0">
