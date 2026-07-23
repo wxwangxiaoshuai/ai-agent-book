@@ -81,7 +81,7 @@ def delegate_to_agent(agent_card, task: str):
 
 1. 发现：行程助手在 Agent 目录搜 "flight_booking" 能力的 Agent
    → 找到"旅行预订 Agent"的 Card
-2. 委托：行程助手按 Card 的 endpoint 发任务
+2. 委托：行程助手按 Card 的 url 发任务
    "帮我订 7/25 北京到上海最便宜的机票"
 3. 执行：旅行预订 Agent 自己内部跑（可能调自己的工具/MCP）
 4. 返回：旅行预订 Agent 把结果（订票成功/航班信息）返回给行程助手
