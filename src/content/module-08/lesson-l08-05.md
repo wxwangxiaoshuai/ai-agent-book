@@ -34,37 +34,45 @@
 
 ```python
 import json
+from datetime import datetime, timedelta
+from openai import OpenAI
+
+client = OpenAI()
 
 class MemoryUpdater:
     """记忆更新器：判断新旧关系并执行更新"""
     def __init__(self, collection):
         self.collection = collection
 
-    def update(self, user_id: str, new_fact: str):
+    def update(self, user_id: str, new_fact: str, created_at: str | None = None):
         """处理一条新事实"""
-        # 1. 检索是否有相关的旧记忆
-        old = self.collection.query(
+        created_at = created_at or datetime.now().isoformat()
+        # 1. 检索是否有相关的旧记忆（仅 active）
+        results = self.collection.query(
             query_texts=[new_fact], n_results=3,
-            where={"user_id": user_id},
-        )["documents"][0] if old_ids else []
+            where={"$and": [{"user_id": user_id}, {"status": "active"}]},
+        )
+        old_ids = (results.get("ids") or [[]])[0]
+        old_docs = (results.get("documents") or [[]])[0]
+        old_metas = (results.get("metadatas") or [[]])[0]
 
-        if not old:
-            # 无旧记忆，直接新增
-            self._add(user_id, new_fact)
+        if not old_ids:
+            self._add(user_id, new_fact, metadata={"created_at": created_at})
             return "added"
 
-        # 2. 让 LLM 判断新旧关系：矛盾 or 互补 or 重复
-        relation = self._judge_relation(new_fact, old[0])
+        old_id, old_doc, old_meta = old_ids[0], old_docs[0], old_metas[0]
+        relation = self._judge_relation(new_fact, old_doc)
 
         if relation == "duplicate":
             return "skipped (重复)"
         elif relation == "complementary":
-            merged = self._merge(old[0], new_fact)
-            self._replace(old_ids[0], user_id, merged)
+            merged = self._merge(old_doc, new_fact)
+            self._replace(old_id, user_id, merged)
             return "merged"
         elif relation == "contradictory":
-            # 矛盾：按冲突解决规则处理（见下）
-            return self._resolve_conflict(user_id, old[0], new_fact)
+            return self._resolve_conflict(
+                user_id, old_id, old_doc, old_meta, new_fact, created_at,
+            )
         return "unknown"
 ```
 
@@ -96,8 +104,16 @@ CONFLICT_PROMPT = """判断新事实与旧事实的关系。
   - reason: 一句话理由
 """
 
-def _resolve_conflict(self, user_id: str, old_fact: str, new_fact: str):
-    """解决冲突"""
+def _resolve_conflict(
+    self, user_id: str, old_id: str, old_fact: str, old_meta: dict,
+    new_fact: str, new_created_at: str,
+):
+    """解决冲突：先比 created_at，再参考 LLM resolution"""
+    old_ts = old_meta.get("created_at", "")
+    # 时序优先：真实对话时间更新的胜（避免异步抽取乱序）
+    if new_created_at and old_ts and new_created_at < old_ts:
+        return "old kept (new older by created_at)"
+
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": CONFLICT_PROMPT.format(
@@ -105,17 +121,20 @@ def _resolve_conflict(self, user_id: str, old_fact: str, new_fact: str):
         temperature=0, response_format={"type": "json_object"},
     )
     data = json.loads(resp.choices[0].message.content)
+    resolution = data.get("resolution", "uncertain")
 
-    if data["resolution"] == "new_wins":
-        # 新事实覆盖旧事实（旧的可归档不删，供追溯）
-        self._archive(old_fact_id, user_id)
-        self._add(user_id, new_fact, metadata={"supersedes": old_fact_id})
+    if resolution == "new_wins":
+        self._archive(old_id, user_id)
+        self._add(user_id, new_fact, metadata={
+            "supersedes": old_id, "created_at": new_created_at,
+        })
         return "new replaced old (archived)"
-    elif data["resolution"] == "old_wins":
+    elif resolution == "old_wins":
         return "old kept (new ignored)"
     else:
-        # 不确定：版本化，都存，检索取最新
-        self._add(user_id, new_fact, metadata={"conflicts_with": old_fact_id})
+        self._add(user_id, new_fact, metadata={
+            "conflicts_with": old_id, "created_at": new_created_at,
+        })
         return "both stored (versioned)"
 ```
 
@@ -142,6 +161,8 @@ def _resolve_conflict(self, user_id: str, old_fact: str, new_fact: str):
 **1. 基于时间**：太老的记忆，且长期没被检索，遗忘。
 
 ```python
+from datetime import datetime, timedelta
+
 def forget_by_age(self, threshold_days: int = 90):
     """遗忘超期且未被访问的记忆"""
     cutoff = (datetime.now() - timedelta(days=threshold_days)).isoformat()
@@ -160,10 +181,15 @@ def forget_by_age(self, threshold_days: int = 90):
 def forget_by_importance(self, keep_top: int = 1000):
     """保留重要度最高的 N 条，其余遗忘"""
     all_mem = self.collection.get()
-    scored = [(self._importance(m), m) for m in all_mem["metadatas"]]
+    ids = all_mem.get("ids") or []
+    metas = all_mem.get("metadatas") or []
+    scored = [
+        (self._importance(m), mid) for mid, m in zip(ids, metas)
+    ]
     scored.sort(reverse=True)
-    forget_ids = [m["id"] for _, m in scored[keep_top:]]
-    self.collection.delete(ids=forget_ids)
+    forget_ids = [mid for _, mid in scored[keep_top:]]
+    if forget_ids:
+        self.collection.delete(ids=forget_ids)
 ```
 
 **3. 基于访问频率**：长期没人查的记忆，遗忘（LRU 思路）。
@@ -255,4 +281,4 @@ def forget_by_age(self, threshold_days=90):
 - 软遗忘（归档）优于硬遗忘（删除）——可恢复、合规友好，除非 GDPR 等要求硬删
 - 绝不能忘的记忆（安全/合规/身份）标记 protected，遗忘机制带白名单跳过——遗忘要有安全网
 - 维护要批量调度：对话结束做增量更新，低峰做批量遗忘，类比"垃圾回收"
-- M8 至此串联：分类(L01)→短期窗口(L02)→长期架构(L03)→程序记忆(L04)→冲突遗忘(L05)，P8 综合落地
+- M8 至此串联：分类(L08-01)→短期窗口(L08-02)→长期架构(L08-03)→程序记忆(L08-04)→冲突遗忘(L08-05)，P8 综合落地

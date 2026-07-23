@@ -82,7 +82,7 @@ class SummarizingWindowMemory:
 
     def add(self, message: dict):
         self.recent.append(message)
-        # 超过窗口，把最老的一对 user/assistant 压进摘要
+        # 超过窗口，逐条压缩最老消息进摘要（生产可改为成对 pop user/assistant）
         while len(self.recent) > self.max_recent:
             old = self.recent.pop(0)
             self.summary = self._summarize(self.summary, old)
@@ -146,7 +146,23 @@ class TokenBudgetMemory:
         """当超出预算，压缩最老的消息进摘要"""
         while self._total_tokens() > self.budget and len(self.recent) > 2:
             old = self.recent.pop(0)
+            # 与 SummarizingWindowMemory._summarize 相同实现（可复用或继承）
             self.summary = self._summarize(self.summary, old)
+
+    def _summarize(self, existing_summary: str, old_msg: dict) -> str:
+        """把最老消息压缩进摘要（同 SummarizingWindowMemory）"""
+        prompt = (
+            f"已有摘要：{existing_summary or '（无）'}\n"
+            f"新消息：{old_msg['role']}: {old_msg['content']}\n"
+            "请输出更新后的简洁摘要，保留关键事实与偏好。"
+        )
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=300,
+        )
+        return resp.choices[0].message.content
 
     def _total_tokens(self) -> int:
         return (self._count(self.system) + self._count(self.summary)
@@ -171,20 +187,20 @@ class TokenBudgetMemory:
 **缓解软性丢失的组装顺序**：
 
 ```python
-def assemble_context(system, summary, recent, retrieved_facts):
-    """把最关键信息放在首尾，规避 Lost in the Middle"""
-    return [
-        {"role": "system", "content": system},
-        # 头部：摘要（关键背景）
-        {"role": "system", "content": f"[摘要]\n{summary}"} if summary else None,
-        # 中段：最近对话原文
-        *recent,
-        # 尾部：刚检索到的事实（最相关，放最后强化记忆）
-        {"role": "system", "content": f"[即时检索]\n{retrieved_facts}"} if retrieved_facts else None,
-    ]  # 过滤 None
+def assemble_context(system, summary, recent, retrieved_facts, user_msg):
+    """组装顺序对齐 M3 L03-02：System → 摘要/历史 → 检索 → 当前 user（必须最后）"""
+    msgs = [{"role": "system", "content": system}]
+    if summary:
+        msgs.append({"role": "system", "content": f"[摘要]\n{summary}"})
+    msgs.extend(recent)
+    if retrieved_facts:
+        # 检索事实紧挨在当前 user 之前（强化注意力，且不破坏「user 在最后」约定）
+        msgs.append({"role": "system", "content": f"[即时检索]\n{retrieved_facts}"})
+    msgs.append({"role": "user", "content": user_msg})
+    return msgs
 ```
 
-> 经验：把"模型这次最需要关注的"放 prompt 末尾，把"背景"放开头，中间放次重要内容。这是长上下文场景下的实用组装原则。
+> 经验：背景/摘要放开头，检索事实紧挨用户问题之前，当前 user 必须放最后（与 M3 一致）。不要把检索块放到 user 消息之后。
 
 ### 三种策略对比
 
@@ -206,7 +222,7 @@ def assemble_context(system, summary, recent, retrieved_facts):
 - [ ] 摘要 LLM 调用成本已经不低，且频繁触发 → 上长期记忆（摊薄成本）
 - [ ] 只在单次会话内工作，关了就丢 → 留在短期记忆即可
 
-> 记忆层次不是替代关系，是**叠加关系**：短期窗口管"这次对话"，长期记忆管"跨会话"。L08-02 解决短期，L08-03 接力长期。
+> 记忆层次不是替代关系，是**叠加关系**：短期窗口管"这次对话"，长期记忆管"跨会话"。本节解决短期，L08-03 接力长期。
 
 ### 要点总结
 

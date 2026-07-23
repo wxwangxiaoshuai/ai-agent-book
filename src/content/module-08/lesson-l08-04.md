@@ -46,7 +46,7 @@ research_skill = Skill(
         {"action": "synthesize", "tool": "llm_synthesize", "params": "综合成报告"},
     ],
     preconditions=["任务含'调研/对比/了解'等意图", "目标是一项技术而非具体代码问题"],
-    tools=["web_search", "fetch_page", "llm_extract"],
+    tools=["web_search", "fetch_page", "llm_extract", "llm_synthesize"],
     success_criteria="输出含来源引用的结构化报告，覆盖定义/特性/对比/适用场景",
     example_input="调研 LangGraph 和 CrewAI 的区别",
 )
@@ -78,6 +78,9 @@ REFLECT_PROMPT = """你刚完成一个任务。判断这段执行流程是否值
 
 输出："""
 
+from openai import OpenAI
+client = OpenAI()
+
 def maybe_learn_skill(task: str, trace: list, result: str) -> Skill | None:
     """任务完成后，尝试沉淀技能"""
     resp = client.chat.completions.create(
@@ -91,9 +94,11 @@ def maybe_learn_skill(task: str, trace: list, result: str) -> Skill | None:
     data = json.loads(resp.choices[0].message.content)
     if not data.get("save", True):
         return None
-    return Skill(**{k: data[k] for k in
-                    ["id","name","description","steps","preconditions","tools","success_criteria","example_input"]
-                    if k in data}, id=data.get("name","skill"))
+    fields = ["name", "description", "steps", "preconditions", "tools",
+              "success_criteria", "example_input"]
+    payload = {k: data[k] for k in fields if k in data}
+    skill_id = data.get("id") or data.get("name", "skill")
+    return Skill(id=skill_id, **payload)
 ```
 
 **反思是关键**：不是所有任务都该沉淀。"帮我把这段代码格式化"是一次性操作，不值得存技能；"调研一项技术"是可泛化流程，值得。Agent 要学会区分——**沉淀过多垃圾技能会污染检索**（L08-05 遗忘机制处理）。
@@ -127,8 +132,7 @@ class SkillLibrary:
         return [s for _, s in scored[:top_k]]
 
     def _check_preconditions(self, task: str, skill: Skill) -> bool:
-        """用 LLM 判断任务是否满足技能前置条件（也可用规则）"""
-        # 简化：实际可用关键词或小模型
+        """示意：生产可用关键词规则或小模型硬过滤；此处恒 True 仅演示流程"""
         return True
 
     def _intent_similarity(self, task: str, skill: Skill) -> float:
