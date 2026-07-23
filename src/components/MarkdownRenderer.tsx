@@ -10,6 +10,7 @@ import { AgentLoopVisualizer } from './interactive/AgentLoopVisualizer'
 import { EmbeddingExplorer } from './interactive/EmbeddingExplorer'
 import { HarnessMonitor } from './interactive/HarnessMonitor'
 import { SandboxDemo } from './interactive/SandboxDemo'
+import { MultiModalDemo } from './interactive/MultiModalDemo'
 
 const componentMap: Record<string, React.ComponentType<Record<string, string>>> = {
   tokenizer: TokenizerDemo,
@@ -19,6 +20,7 @@ const componentMap: Record<string, React.ComponentType<Record<string, string>>> 
   embedding: EmbeddingExplorer,
   harnessMonitor: HarnessMonitor,
   sandboxDemo: SandboxDemo,
+  multimodalDemo: MultiModalDemo,
 }
 
 function parseInteractiveDirective(
