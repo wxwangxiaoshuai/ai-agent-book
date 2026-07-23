@@ -135,15 +135,9 @@ def stable_test(prompt: str, expected: str, n_runs: int = 3) -> bool:
 
 > **建议起步路径**：先用 promptfoo 搭建最小评测流水线（30 分钟内可以跑通），随着项目复杂化再考虑迁移到更重的平台。
 
-### 要点总结
+### 完整测试运行器
 
-- Prompt 测试用量化指标替代直觉判断，防止"改好了 A 但改坏了 B"
-- 测试集覆盖正常输入、边界情况、历史失败案例
-- LLM-as-Judge 用于评估主观指标，但需注意位置偏差、冗长偏差等已知问题
-- LLM 的非确定性导致测试 flaky——用 temperature=0、多次运行取多数、只测格式来缓解
-- 用 Git 管理 Prompt 版本，记录每次改动的 changelog 和评估结果
-- 推荐用 promptfoo 快速搭建评测流水线，不必从零开始
-- 把 Prompt 测试集成到 CI，设置通过率阈值（如 90%）作为质量门禁
+把上面的测试逻辑封装成一个可复用的测试运行器：
 
 ```python
 import json
@@ -219,7 +213,7 @@ prompts/
   "version": "1.1",
   "created": "2025-07-22",
   "author": "zhangsan",
-  "model": "claude-sonnet-5",
+  "model": "claude-sonnet-4-20250514",
   "system_prompt": "你是一个情感分析专家。分析用户输入的情感倾向...",
   "user_prompt_template": "请分析以下文本的情感：\n\n{text}",
   "parameters": {
@@ -272,10 +266,50 @@ jobs:
 
 > 把 Prompt 测试作为 PR 的 CI 检查项。改 Prompt 必须通过测试，不通过测试的改动不能合并。
 
+### 模型升级时的回归测试
+
+当你切换模型版本（如 `gpt-4o` → `gpt-4o-2024-11-20`，或从 OpenAI 切到 Anthropic），**必须重跑测试集**——新模型可能改变输出习惯（格式、语气、JSON 字段顺序），导致原本通过的 Prompt 退化。
+
+```python
+def regression_test_on_model_switch(
+    prompt: str,
+    test_cases: list[dict],
+    old_model: str,
+    new_model: str,
+) -> dict:
+    """模型切换时的回归测试"""
+    old_results = run_prompt_tests_with_model(prompt, test_cases, old_model)
+    new_results = run_prompt_tests_with_model(prompt, test_cases, new_model)
+    
+    report = {
+        "old_model": old_model,
+        "new_model": new_model,
+        "old_pass_rate": old_results["pass_rate"],
+        "new_pass_rate": new_results["pass_rate"],
+        "regressions": [
+            d for d in new_results["details"]
+            if d["status"] == "FAIL"
+            and any(o["id"] == d["id"] and o["status"] == "PASS" for o in old_results["details"])
+        ],
+    }
+    if report["regressions"]:
+        print(f"⚠️ 发现 {len(report['regressions'])} 个回归用例！")
+    return report
+```
+
+**建议流程**：
+1. 新模型上线前，用测试集跑一轮回归
+2. 对比新旧模型的通过率
+3. 如果有回归用例，逐个分析原因，调整 Prompt
+4. 确认全部通过后再切换
+
 ### 要点总结
 
 - Prompt 测试用量化指标替代直觉判断，防止"改好了 A 但改坏了 B"
-- 测试集覆盖正常输入、边界情况、历史失败案例
-- LLM-as-Judge 用于评估主观指标（准确性、完整性、简洁性）
+- 测试集覆盖正常输入、边界情况（空输入/超长输入/特殊字符）、历史失败案例
+- LLM-as-Judge 用于评估主观指标（准确性、完整性、简洁性），但需注意位置偏差、冗长偏差、自我偏好、过于宽容等已知问题——用随机打乱顺序、交叉模型评估、严格评分标准来规避
+- LLM 的非确定性导致测试 flaky——用 temperature=0、多次运行取多数、只测格式不测内容来缓解
 - 用 Git 管理 Prompt 版本，记录每次改动的 changelog 和评估结果
+- 推荐用 promptfoo 快速搭建评测流水线，不必从零开始
 - 把 Prompt 测试集成到 CI，设置通过率阈值（如 90%）作为质量门禁
+- **模型升级时必须重跑测试集**——新模型可能改变输出习惯，导致旧 Prompt 退化

@@ -167,19 +167,50 @@ A: 中国的首都。
 在生产环境中，不应使用固定的示例集。更好的做法是根据输入动态选择最相关的示例：
 
 ```python
+import numpy as np
+from openai import OpenAI
+
+client = OpenAI()
+
+def get_embedding(text: str) -> list[float]:
+    """调用 OpenAI Embedding API 获取向量"""
+    resp = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text,
+    )
+    return resp.data[0].embedding
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """计算余弦相似度"""
+    a_arr, b_arr = np.array(a), np.array(b)
+    return float(np.dot(a_arr, b_arr) / (np.linalg.norm(a_arr) * np.linalg.norm(b_arr)))
+
 def select_examples(query: str, pool: list[dict], k: int = 3) -> list[dict]:
     """从示例池中选择与 query 最相似的 k 个示例"""
-    query_embedding = embed(query)
+    query_embedding = get_embedding(query)
     scored = []
     for ex in pool:
-        ex_embedding = embed(ex["input"])
+        ex_embedding = get_embedding(ex["input"])
         similarity = cosine_similarity(query_embedding, ex_embedding)
         scored.append((similarity, ex))
     scored.sort(reverse=True)
     return [ex for _, ex in scored[:k]]
+
+# 使用示例
+example_pool = [
+    {"input": "这个产品太棒了", "output": "正面"},
+    {"input": "质量很差，退货了", "output": "负面"},
+    {"input": "功能一般，价格还行", "output": "中性"},
+    {"input": "客服态度极差", "output": "负面"},
+]
+
+selected = select_examples("包装不错但物流太慢", example_pool, k=2)
+# 会选出语义最接近的 2 个示例作为 Few-shot
 ```
 
-这种"动态 Few-shot"策略在 RAG 系统中非常常见，可以显著提升检索后生成的质量。
+这种"动态 Few-shot"策略在 RAG 系统中非常常见，可以显著提升检索后生成的质量。M4 会深入讲解 Embedding 和向量检索的原理。
+
+> **注意：Few-shot 不是万能的**。当示例与目标任务不匹配时，Few-shot 可能比 Zero-shot 更差——这叫**负迁移**。如果发现加了 Few-shot 后效果反而下降，先检查示例是否与任务类型一致。对于简单任务（翻译、摘要），Zero-shot 往往已经足够。
 
 ### 要点总结
 
@@ -188,3 +219,4 @@ def select_examples(query: str, pool: list[dict], k: int = 3) -> list[dict]:
 - 示例必须格式一致，不一致的格式比没有示例更差
 - 注意示例偏差——均衡各类别、用输出格式约束规避
 - 生产环境用动态示例选择替代固定示例集
+- Few-shot 可能负迁移：示例与任务不匹配时，Zero-shot 可能更好

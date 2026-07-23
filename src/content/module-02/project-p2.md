@@ -197,7 +197,10 @@ def check_summary(result, expected_keywords):
 @pytest.mark.parametrize("tc", TEST_CASES)
 def test_document_analysis(tc):
     if not tc["input"].strip():
-        # 空文档的特殊处理
+        # 空文档：验证系统不崩溃且返回空结果
+        result = analyze_document(tc["input"])
+        assert len(result.entities) == 0, f"[{tc['id']}] 空文档应返回空实体列表"
+        assert len(result.key_points) == 0, f"[{tc['id']}] 空文档应返回空关键要点"
         return
 
     result = analyze_document(tc["input"])
@@ -230,8 +233,11 @@ def run_version(name: str, analyze_fn, cases: list) -> dict:
             continue
         try:
             result = analyze_fn(tc["input"])
-            # 简化校验：检查实体覆盖率
-            result_entities = [e.value for e in result.entities] if hasattr(e, 'value') else [e["value"] for e in result.get("entities", [])]
+            # 根据返回类型区分 v1（dict）和 v2（Pydantic 模型）
+            if hasattr(result, 'entities'):  # Pydantic 模型 (v2)
+                result_entities = [e.value for e in result.entities]
+            else:  # dict (v1)
+                result_entities = [e["value"] for e in result.get("entities", [])]
             expected_values = [e["value"] for e in tc["expected"].get("entities_contains", [])]
             hit = sum(1 for v in expected_values if any(v in r for r in result_entities))
             rate = hit / len(expected_values) if expected_values else 1.0

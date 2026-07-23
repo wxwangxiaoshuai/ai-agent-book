@@ -81,16 +81,20 @@ response = client.chat.completions.create(
                                 "name": {"type": "string"},
                                 "color": {"type": "string"}
                             },
-                            "required": ["name", "color"]
+                            "required": ["name", "color"],
+                            "additionalProperties": False  # strict 模式必需：禁止额外字段
                         }
                     }
                 },
-                "required": ["fruits"]
+                "required": ["fruits"],
+                "additionalProperties": False  # strict 模式必需：每一层 object 都要加
             }
         }
     },
 )
 ```
+
+> **注意**：OpenAI 的 `strict: true` 模式**要求** Schema 中每一层 `object` 都设置 `"additionalProperties": false`，否则 API 会返回 `400 Invalid schema` 错误。这是最常踩的坑。
 
 **Anthropic 结构化输出**：
 
@@ -132,9 +136,11 @@ response = client.messages.create(
 )
 
 # 从 tool_use 响应中提取结构化数据
-import json
-tool_result = response.content[1]  # tool_use block
-fruits_data = json.loads(tool_result.input) if isinstance(tool_result.input, str) else tool_result.input
+tool_result = next(
+    block for block in response.content
+    if block.type == "tool_use"
+)
+fruits_data = tool_result.input  # 已是 dict，无需 json.loads
 ```
 
 **方式 B：Prefill（预填充）**——在 assistant 消息中预填 `{`，强制模型以 JSON 开头：
@@ -187,6 +193,34 @@ Function Calling 的优势：
 - 模型擅长"调用函数"——这是它训练中大量接触的模式
 - Schema 约束强，字段类型、枚举值都有保障
 - 可以同时定义多个工具，让模型选择最合适的输出格式
+
+### 方法 3.5：Gemini 结构化输出
+
+Google Gemini 也支持通过 `response_schema` 参数约束输出结构：
+
+```python
+import google.generativeai as genai
+from pydantic import BaseModel
+
+# 定义 Schema（Pydantic 模型）
+class Fruit(BaseModel):
+    name: str
+    color: str
+
+class FruitList(BaseModel):
+    fruits: list[Fruit]
+
+# 使用 response_schema 约束输出
+model = genai.GenerativeModel("gemini-2.0-flash")
+response = model.generate_content(
+    "列出 3 种水果及其颜色",
+    generation_config={
+        "response_mime_type": "application/json",
+        "response_schema": FruitList,
+    },
+)
+fruits = FruitList.model_validate_json(response.text)
+```
 
 ### 方法 4：instructor 库（推荐）
 
@@ -254,8 +288,9 @@ instructor 的核心优势：
 |------|-----------|------------|-----------|---------|
 | Prompt 约束 | 低 | 无 | 低 | 原型验证 |
 | JSON Mode | 高 | 无 | 低 | 简单 JSON 输出 |
-| Function Calling | 高 | 高 | 中 | 生产环境（通用） |
-| instructor | 高 | 高 | 低 | 生产环境（推荐） |
+| Function Calling / Tool Use | 高 | 高 | 中 | 生产环境（OpenAI / Anthropic） |
+| Gemini `response_schema` | 高 | 高 | 低 | Gemini 生态 |
+| instructor | 高 | 高 | 低 | 生产环境（推荐，多模型） |
 
 ### 异常处理：输出不合法怎么办
 
@@ -296,5 +331,6 @@ def safe_parse(response) -> dict:
 - 结构化输出是 Agent 的基石——模型输出必须能被代码可靠解析
 - Prompt 约束最简单但不保证合法性；JSON Mode 保证合法但不保证 Schema
 - Function Calling / Tool Use 是最可靠的结构化输出方式
+- Gemini 通过 `response_schema` 同样支持 Schema 约束
 - instructor 库封装了 Function Calling + Pydantic 校验，推荐生产使用
 - 永远为解析失败准备降级策略（正则提取 → 模型修复 → 抛异常）
