@@ -144,7 +144,8 @@ def output_guardrail(agent_output: str, context: dict = None) -> tuple[str, list
 def classify_topic(question: str) -> str:
     """话题分类"""
     # 用 embedding 相似度匹配预定义话题
-    topics = {"医疗": [...关键词/示例], "股票": [...], "客服": [...]}
+    topics = {"医疗": ["问诊", "用药", "症状"], "股票": ["涨跌", "仓位", "行情"],
+              "客服": ["订单", "退款", "物流"]}
     q_emb = embed(question)
     best = max(topics.items(), key=lambda t: similarity(q_emb, embed(t[1][0])))
     return best[0]
@@ -160,7 +161,7 @@ def topic_guard(question: str, allowed: list) -> tuple[bool, str]:
 
 NVIDIA 的 NeMo Guardrails 是护栏领域代表——用配置/规则定义对话边界，而非写一堆 if：
 
-```python
+```colang
 # NeMo 用 Colang（专门 DSL）定义规则
 # config/topics.co（简化示意）
 define user ask off_topic politics
@@ -206,7 +207,7 @@ response = rails.generate(messages=[{"role": "user", "content": question}])
 护栏的代价：
   · 误拦：正常问题被当成越界拒答 → 体验差
   · 延迟：每个护栏都是一道处理 → 响应变慢
-  · 维护：规则多了难���理，互相冲突
+  · 维护：规则多了难管理，互相冲突
 
 误拦场景：
   · PII 护栏拦了"我的手机是138开头帮我查订单"（合理需求被拦）
@@ -240,5 +241,5 @@ response = rails.generate(messages=[{"role": "user", "content": question}])
 - NeMo Guardrails：用 Colang DSL 配置化定义护栏，生态全但黑盒；生产常混合（核心安全手写+话题用NeMo）
 - 护栏权衡：不是越多越好——误拦正常内容伤体验、增延迟、难维护；硬拦截vs软提示、白名单豁免、持续调误拦率
 - 护栏是安全网不是铁笼：拦要准，拦不住别硬拦；护栏触发/误拦回流到trace和评测持续优化
-- 与trace(L03)/评测(L02)协作：护栏拦+trace记+评测回归，闭环持续调优
+- 与trace(L13-03)/评测(L13-02)协作：护栏拦+trace记+评测回归，闭环持续调优
 - 下一节 L13-05：护栏要拦的最大威胁——Prompt 注入与越狱攻防

@@ -63,13 +63,33 @@ class StubLLM:
         return MockResponse(content=self.response, tool_calls=[])
 
 class MockResponse:
-    def __init__(self, content, tool_calls):
+    def __init__(self, content="", tool_calls=None):
         self.choices = [MockChoice(content, tool_calls)]
         self.usage = MockUsage()
 
+class MockUsage:
+    def __init__(self, prompt_tokens=10, completion_tokens=20):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = prompt_tokens + completion_tokens
+
+class MockToolCall:
+    """与 OpenAI tool_call 结构近似的轻量 mock"""
+    def __init__(self, name: str, args: dict, id: str = "call_0"):
+        self.id = id
+        self.type = "function"
+        self.function = type("F", (), {
+            "name": name,
+            "arguments": __import__("json").dumps(args, ensure_ascii=False),
+        })()
+        self.name, self.args = name, args  # 便于断言
+
 class MockChoice:
     def __init__(self, content, tool_calls):
-        self.message = type("M",(),{"content":content,"tool_calls":tool_calls or None})()
+        self.message = type("M", (), {
+            "content": content,
+            "tool_calls": tool_calls or None,
+        })()
 
 # 用法：测 Agent 不调工具直接回答
 def test_agent_direct_answer():
@@ -135,8 +155,13 @@ class RecordReplayLLM:
             # 用真 LLM 调，存响应
             resp = real_llm.chat(messages, **kwargs)
             with open(fixture, "w") as f:
-                json.dump({"content": resp.choices[0].message.content,
-                           "tool_calls": ...}, f)
+                msg = resp.choices[0].message
+                tcs = [
+                    {"name": tc.function.name,
+                     "arguments": tc.function.arguments}
+                    for tc in (msg.tool_calls or [])
+                ]
+                json.dump({"content": msg.content, "tool_calls": tcs}, f)
             return resp
         else:   # replay
             with open(fixture) as f:
@@ -180,23 +205,25 @@ def test_replay():
 把形态二用起来，测 Agent 真正的行为——轨迹对不对：
 
 ```python
+from unittest.mock import MagicMock
+
 def test_agent_trajectory():
     """测 Agent 轨迹：选对工具、走对顺序、正确终止"""
+    mock_search = MagicMock(return_value="search hits")
+    mock_fetch = MagicMock(return_value="page body")
     llm = SequencedMockLLM([
-        MockResponse(tool_calls=[MockToolCall("search", {"q":"X"})]),  # 调 search
-        MockResponse(tool_calls=[MockToolCall("fetch", {"url":"y"})]),# 调 fetch
-        MockResponse(content="综合答案", tool_calls=[]),               # 输出
+        MockResponse(content="", tool_calls=[MockToolCall("search", {"q": "X"})]),
+        MockResponse(content="", tool_calls=[MockToolCall("fetch", {"url": "y"})]),
+        MockResponse(content="综合答案", tool_calls=[]),
     ])
     agent = Agent(llm=llm, tools=[mock_search, mock_fetch])
 
     result = agent.run("调研 X")
 
-    # 断言轨迹
     assert result == "综合答案"
-    assert llm.call_count == 3               # 走了 3 步
-    assert mock_search.called_with({"q":"X"})  # search 被对参数调用
-    assert mock_fetch.called                   # fetch 也被调
-    # 测终止：第3步无 tool_calls，Agent 应停（不继续调 LLM）
+    assert llm.call_count == 3
+    mock_search.assert_called()   # 或 assert_called_with(q="X")，视工具签名而定
+    mock_fetch.assert_called()
 ```
 
 > 这是 Mock LLM 最有价值的用法——**测"Agent 的行为模式"而非"输出文本"**。轨迹对了，Agent 的"流程"就稳了；输出文本质量靠 E2E+LLM-Judge（L13-01/07）。
@@ -255,4 +282,4 @@ Mock 太假的风险：
 - Mock 最有价值用法：测"Agent 行为模式"（轨迹对不对）而非"输出文本"——流程稳靠它，文本质量靠E2E+Judge
 - CI 分层：单元/集成用mock秒级每次跑、E2E真LLM nightly；日常拦流程回归、夜间拦质量回归
 - Mock 边界：别 mock 太假——用真实录制形态、覆盖边界、模型升级重录、定期真 LLM 对照
-- M13 收官：评估(L01-02)+可观测(L03)+护栏(L04)+安全(L05-06)+测试(L07-08)构成生产质量保障体系；P13 综合落地
+- M13 收官：评估(L13-01/02)+可观测(L13-03)+护栏(L13-04)+安全(L13-05/06)+测试(L13-07/08)构成生产质量保障体系；P13 综合落地

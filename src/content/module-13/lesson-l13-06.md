@@ -60,6 +60,8 @@ DANGEROUS = {"refund_order", "send_email", "delete_record"}
 即便给了工具，也要约束它的参数——防注入诱导调"合法工具干非法事"：
 
 ```python
+import re
+
 # 危险工具带白名单/约束
 def send_email(to: str, subject: str, body: str):
     """发邮件——收件人必须白名单"""
@@ -162,6 +164,8 @@ def safe_tool_result_to_context(result: dict) -> str:
 安全事件要能追溯——谁、何时、调了什么工具、什么参数、什么结果：
 
 ```python
+from dataclasses import dataclass
+
 @dataclass
 class ToolAuditLog:
     timestamp: str

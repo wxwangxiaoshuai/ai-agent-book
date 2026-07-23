@@ -84,7 +84,7 @@ LLM 安全：代码（指令）和数据（内容）混在同一个文本流里
 
 ```python
 # 不可信内容隔离：两段式
-def safe_research(question: str):
+def safe_research(question: str, url: str):
     # 阶段1：抽取 Agent —— 接触原始不可信内容，但无工具、无执行权
     raw = fetch_webpage(url)   # 不可信内容
     facts = extractor_agent.run(
@@ -161,7 +161,7 @@ def check_output_safety(output: str) -> tuple[bool, str]:
 
 ### 防御四：工具权限最小化（L13-06 详讲）
 
-注入的最终危害是诱导 Agent 调危险工具。**权限最小化**让即便被注入也干不了���事：
+注入的最终危害是诱导 Agent 调危险工具。**权限最小化**让即便被注入也干不了坏事：
 
 ```
 即使 Agent 被注入"调 send_email 外泄"

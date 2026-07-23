@@ -115,7 +115,13 @@ def run_eval_suite(cases: list, agent: Agent, max_workers: int = 10) -> list:
 
 ```python
 # evals/scorer.py
-from .lesson_l13_01_stuff import llm_judge   # L13-01 的 LLM-as-Judge
+from evals.judge import llm_judge   # L13-01 的 LLM-as-Judge
+
+REFUSAL_MARKERS = ("抱歉", "无法", "不能", "拒绝", "不便回答", "超出服务范围")
+
+def is_refusal(output: str) -> bool:
+    """启发式拒答判定（生产可换成小分类器）"""
+    return any(m in output for m in REFUSAL_MARKERS)
 
 def score_case(result: dict) -> dict:
     """对单案例打分"""
@@ -210,7 +216,7 @@ jobs:
               ...context.repo, issue_number: context.payload.pull_request.number,
               body: `## Agent 评测报告
               平均质量: ${report.avg_quality}/5
-              通过率: ${(report.pass_rate*100).}%
+              通过率: ${(report.pass_rate * 100).toFixed(1)}%
               平均 token: ${report.avg_tokens}
               门禁: ${report.gate_passed ? '✅通过' : '❌阻断'}`
             });
@@ -232,12 +238,17 @@ jobs:
 ```python
 def compare_to_baseline(current: dict, baseline: dict) -> str:
     """对比基线，输出变更影响"""
+    lower_better = {"avg_tokens", "p99_latency"}  # 越小越好
     lines = ["## 与基线对比"]
     for k in ["avg_quality", "pass_rate", "avg_tokens", "p99_latency"]:
         cur, base = current[k], baseline[k]
         diff = cur - base
-        arrow = "↑" if (diff > 0 and k != "avg_tokens") or (diff < 0 and k == "avg_tokens") else "↓"
-        good = "✅" if (k == "avg_tokens" and diff < 0) or (k != "avg_tokens" and diff > 0) else "⚠️"
+        if k in lower_better:
+            arrow = "↓" if diff < 0 else "↑"
+            good = "✅" if diff < 0 else "⚠️"
+        else:
+            arrow = "↑" if diff > 0 else "↓"
+            good = "✅" if diff > 0 else "⚠️"
         lines.append(f"{good} {k}: {base} → {cur} ({arrow}{abs(diff)})")
     return "\n".join(lines)
 ```
