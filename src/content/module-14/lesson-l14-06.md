@@ -42,19 +42,23 @@ Agent 系统三维版本：
 **版本管理的工程化**：
 
 ```python
+import time
+from opentelemetry import trace
+# tracer 初始化同 L13-03：tracer = trace.get_tracer("agent")
+
 # 配置化 + 版本标记
 AGENT_CONFIG = {
     "version": "2026.07.23",   # 整体配置版本
     "prompt": {"id": "sys_v5", "source": "prompts/sys_v5.md"},
-    "model": {"name": "gpt-4o-2026-07", "fallback": "gpt-4o-mini"},
+    "model": {"name": "gpt-4o", "fallback": "gpt-4o-mini"},
     "tools": ["search@v3", "code_exec@v2", "fetch@v1"],   # 工具带版本
 }
 
 # 每次请求记录用了哪套版本（关联 trace，L13-03）
 def run(agent_config):
-    with trace.span("agent_run"):
-        trace.set_attribute("config.version", agent_config["version"])
-        trace.set_attribute("prompt.id", agent_config["prompt"]["id"])
+    with tracer.start_as_current_span("agent_run") as span:
+        span.set_attribute("config.version", agent_config["version"])
+        span.set_attribute("prompt.id", agent_config["prompt"]["id"])
         # ... 这样出问题能定位是哪套版本
 ```
 
@@ -89,19 +93,27 @@ def run(agent_config):
 ```
 
 ```python
+from dataclasses import dataclass
+
 # 记忆 schema 演进的兼容原则
+@dataclass
 class Memory:
     # v1: {user_id, fact}
-    # v2: 加 type 字段
+    # v2: 加 fact_type 字段
     # v3: 加 created_at 字段
-    
-    def load(self, record: dict):
+    user_id: str
+    fact: str
+    fact_type: str = "fact"
+    created_at: str = ""
+
+    @classmethod
+    def load(cls, record: dict) -> "Memory":
         # 兼容老数据：新字段没有给默认值
-        return Memory(
+        return cls(
             user_id=record["user_id"],       # 必填，老数据有
             fact=record["fact"],             # 必填，老数据有
-            type=record.get("type", "fact"), # v2加，老数据默认"fact"
-            created_at=record.get("created_at", ""),  # v3加，老数据默认空
+            fact_type=record.get("fact_type", record.get("type", "fact")),
+            created_at=record.get("created_at", ""),
         )
 ```
 
@@ -126,10 +138,11 @@ class Memory:
 ```
 
 ```python
+import hashlib
+
 def route_by_canary(user_id, new_version_ratio=0.05):
-    """灰度路由：按用户 hash 分配版本"""
-    # 用 hash 而非随机 → 同一用户稳定在同一版本（避免来回切）
-    h = hash(user_id) % 100
+    """灰度路由：按用户稳定 hash 分配版本（跨进程一致，勿用内置 hash()）"""
+    h = int(hashlib.md5(user_id.encode()).hexdigest(), 16) % 100
     return "new" if h < new_version_ratio * 100 else "old"
 
 def agent_run(user_id, question):

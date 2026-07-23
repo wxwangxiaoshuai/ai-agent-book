@@ -48,25 +48,28 @@ Agent 平台 / 多客户多 Agent：
 ```
 
 ```python
-# 数据隔离：所有查询强制带 tenant_id
+# 数据隔离：所有查询强制带 tenant_id（Chroma 示意，对齐 M8）
 class TenantScopedMemory:
-    def __init__(self, tenant_id: str):
+    def __init__(self, tenant_id: str, collection):
         self.tenant_id = tenant_id   # 租户隔离的核心
+        self.collection = collection
 
     def recall(self, query, user_id):
         # 关键：where 条件同时过滤 tenant_id 和 user_id
-        return collection.query(
+        return self.collection.query(
             query_texts=[query], n_results=5,
             where={"$and": [
-                {"tenant_id": self.tenant_id},   # 租户隔离
-                {"user_id": user_id},            # 用户隔离
+                {"tenant_id": {"$eq": self.tenant_id}},
+                {"user_id": {"$eq": user_id}},
             ]})
 
     def remember(self, user_id, dialog):
-        # 写入时强制带 tenant_id
-        facts = extract(dialog)
-        collection.add(documents=facts, metadatas=[
-            {"tenant_id": self.tenant_id, "user_id": user_id, ...}])
+        # 写入时强制带 tenant_id；每条 fact 配独立 id/metadata
+        facts = extract(dialog)  # extract() 为业务侧事实抽取
+        ids = [f"{self.tenant_id}:{user_id}:{i}" for i in range(len(facts))]
+        metas = [{"tenant_id": self.tenant_id, "user_id": user_id,
+                  "fact_type": "dialog"} for _ in facts]
+        self.collection.add(ids=ids, documents=facts, metadatas=metas)
 ```
 
 > 串数据的根因几乎都是"某个查询忘了带 tenant_id 过滤"。**架构上要保证不可能忘**——封装成统一的租户感知查询接口，禁止裸查向量库。L13-06 的"最小权限+所有权约束"在这里升级为"租户隔离强制"。
@@ -193,7 +196,7 @@ AaaS 的能力（类比 SaaS/PaaS）：
 ┌─────────────── AaaS 平台 ──────────────────┐
 │  控制面（管理）                              │
 │   · 租户管理、Agent 配置、计费、监控         │
-├────────────────────────────��────────────────┤
+├─────────────────────────────────────────────┤
 │  数据面（运行）                              │
 │   · Agent 运行时（无状态、可扩展）           │
 │   · 工具执行沙箱（M9）                       │
