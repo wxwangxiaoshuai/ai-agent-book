@@ -92,7 +92,7 @@ from anthropic import Anthropic
 client = Anthropic()  # 自动读取 ANTHROPIC_API_KEY
 
 response = client.messages.create(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-5",
     system="你是一个 AI 技术助手。",  # system 是独立参数！
     messages=[
         {"role": "user", "content": "用一句话介绍什么是 Agent。"},
@@ -108,7 +108,7 @@ print(response.content[0].text)
 
 ```python
 with client.messages.stream(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-5",
     messages=[{"role": "user", "content": "写一首关于 AI 的五言绝句。"}],
     max_tokens=500,
 ) as stream:
@@ -160,7 +160,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic();
 
 const stream = await client.messages.stream({
-  model: "claude-sonnet-4-20250514",
+  model: "claude-sonnet-5",
   max_tokens: 500,
   messages: [{ role: "user", content: "写一首关于 AI 的五言绝句。" }],
 });
@@ -254,7 +254,7 @@ if __name__ == "__main__":
 API 调用最常见的两类错误是**速率限制（429）**和**服务端错误（5xx）**。生产环境必须处理：
 
 ```python
-import time
+import time, random
 from openai import OpenAI, RateLimitError, APIError
 
 client = OpenAI(timeout=30.0)
@@ -269,15 +269,15 @@ def call_with_retry(messages, max_retries=3, base_delay=1):
             )
         except RateLimitError:
             if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)  # 指数退避：1s, 2s, 4s
-                print(f"速率限制，{delay}s 后重试...")
+                delay = base_delay * (2 ** attempt) + random.random()  # 指数退避 + jitter
+                print(f"速率限制，{delay:.1f}s 后重试...")
                 time.sleep(delay)
             else:
                 raise
         except APIError as e:
             if e.status_code and e.status_code >= 500:
                 if attempt < max_retries - 1:
-                    time.sleep(base_delay)
+                    time.sleep(base_delay + random.random())
                 else:
                     raise
             else:
@@ -285,7 +285,7 @@ def call_with_retry(messages, max_retries=3, base_delay=1):
 ```
 
 **重试策略要点**：
-- **指数退避 + jitter**：`delay = base_delay * (2 ** attempt) + random.random()`，避免多个客户端同时重试
+- **指数退避 + jitter**：`delay = base_delay * (2 ** attempt) + random.random()`，避免多个客户端同时重试导致"惊群"
 - **只重试可恢复错误**：429（限流）和 5xx（服务端错误）可重试；400（参数错误）不可重试
 - **设上限**：最多重试 3 次，避免无限循环
 - **设超时**：每次调用都设 timeout，防止永久挂起

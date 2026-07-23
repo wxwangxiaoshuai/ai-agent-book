@@ -158,7 +158,7 @@ while True:
 
 **Step 6：加入历史持久化**
 
-把 `messages` 序列化为 JSON 存到本地文件：
+把 `messages` 序列化为 JSON 存到本地文件。注意：只持久化 user/assistant 消息，**不要把 system 写进文件**——system 在每次请求时按当前角色动态拼上。
 
 ```python
 import json
@@ -173,9 +173,12 @@ def load_history() -> list:
 
 def save_history(messages: list):
     HISTORY_FILE.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
+
+def clear_history():
+    save_history([])
 ```
 
-启动时 `load_history()`，每轮结束后 `save_history(messages)`。
+启动时 `messages = load_history()`，每轮成功后 `save_history(messages)`，`/clear` 和切换角色时调用 `clear_history()`。
 
 **Step 7：加入错误处理**
 
@@ -200,8 +203,6 @@ except APIError as e:
 
 ```python
 import json
-import os
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -230,13 +231,19 @@ def save_history(messages: list):
     HISTORY_FILE.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
 
 
+def clear_history():
+    save_history([])
+
+
 def chat():
     current_role = "default"
-    messages = []
+    messages = load_history()  # 启动时加载上次对话
 
     print("=" * 50)
     print("CLI AI 助手已启动（输入 quit 退出）")
     print("命令: /role <name> | /clear | /history | quit")
+    if messages:
+        print(f"已加载 {len(messages)} 条历史消息")
     print("=" * 50)
 
     while True:
@@ -255,10 +262,13 @@ def chat():
 
         if user_input == "/clear":
             messages = []
+            clear_history()  # 同步清空本地文件
             print("对话历史已清空。")
             continue
 
         if user_input == "/history":
+            if not messages:
+                print("  （暂无历史）")
             for m in messages:
                 print(f"  [{m['role']}] {m['content'][:80]}")
             continue
@@ -267,14 +277,15 @@ def chat():
             role_name = user_input[6:].strip()
             if role_name in ROLES:
                 current_role = role_name
-                messages = []  # 切换角色清空历史
-                print(f"已切换到角色: {role_name}")
+                messages = []
+                clear_history()  # 切换角色清空历史
+                print(f"已切换到角色: {role_name}（历史已清空）")
             else:
                 print(f"未知角色: {role_name}，可选: {', '.join(ROLES.keys())}")
             continue
 
         messages.append({"role": "user", "content": user_input})
-
+        # system 按当前角色动态拼接，不写入历史文件
         full_messages = [{"role": "system", "content": ROLES[current_role]}] + messages
 
         try:
@@ -293,7 +304,7 @@ def chat():
             print()
 
             messages.append({"role": "assistant", "content": reply})
-            save_history(full_messages)
+            save_history(messages)  # 只存 user/assistant，不含 system
 
         except APITimeoutError:
             print("\n[超时] 请重试。")
@@ -358,7 +369,7 @@ AI: [等待几秒后]
 完成基础功能后，尝试以下扩展：
 
 1. **Token 统计**：每次显示本次输入/输出消耗了多少 token
-2. **多模型切换**：在 `default`/`coder`/`translator` 之外加入 `gpt-4o`、`claude-sonnet-4` 等模型选项
+2. **多模型切换**：在 `default`/`coder`/`translator` 之外加入 `gpt-4o`、`claude-sonnet-5` 等模型选项
 3. **对话导出**：输入 `/export` 把当前对话导出为 Markdown 文件
 4. **多会话管理**：支持创建/切换/删除多个独立对话
 5. **成本计算**：根据模型价格计算本次会话累计花费
@@ -370,7 +381,7 @@ AI: [等待几秒后]
 A: 这个项目的核心是"跑通流程"而不是"追求质量"，用 mini 成本低、速度快、足够支撑调试。完成后再切到主力模型测试效果差异。
 
 **Q2: 历史文件存哪里？什么时候存？**
-A: 默认存到 `~/.cli_assistant_history.json`。每轮对话后立即保存（也可以改成退出时统一保存）。生产环境建议加密存储——这里存的是本地明文。
+A: 课程参考代码默认存到 `~/.cli_assistant_history.json`；仓库 `code/` 示例存到 `code/memory/history.json`。每轮对话成功后立即保存（也可以改成退出时统一保存）。只存 user/assistant，不存 system。生产环境建议加密存储——这里存的是本地明文。
 
 **Q3: 切换角色时为什么要清空历史？**
 A: 不同角色的 System Prompt 含义不同，混在一起会让模型困惑。例如 `coder` 角色下的"如何优化这段代码"对话，切换到 `translator` 角色后上下文就完全不搭了。

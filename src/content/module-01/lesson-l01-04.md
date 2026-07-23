@@ -121,7 +121,7 @@ def route_task(user_input: str) -> str:
     if len(user_input) < 50 and not any(kw in user_input for kw in ["分析", "总结", "推理"]):
         return "gpt-4o-mini"
     elif any(kw in user_input for kw in ["代码", "debug", "架构", "设计"]):
-        return "claude-opus-4"
+        return "claude-opus-4-8"
     return "claude-sonnet-5"
 ```
 
@@ -142,16 +142,18 @@ def smart_route(user_input: str) -> str:
         max_tokens=10,
     )
     level = response.choices[0].message.content.strip()
-    return {"simple": "gpt-4o-mini", "standard": "claude-sonnet-5", "complex": "claude-opus-4"}.get(level, "claude-sonnet-5")
+    return {"simple": "gpt-4o-mini", "standard": "claude-sonnet-5", "complex": "claude-opus-4-8"}.get(level, "claude-sonnet-5")
 ```
 
 > **工程权衡**：LLM 路由更准确，但每次请求多一次轻量模型调用（增加延迟和成本）。规则路由零额外成本但不够灵活。建议从规则路由开始，随着场景复杂化再升级为 LLM 路由。
 
 ### 模型版本管理
 
-模型会持续更新（如 `gpt-4o-2024-08-06`、`claude-sonnet-4-20250514`）。生产环境需要注意：
+模型会持续更新。生产环境需要注意**别名**与**快照 ID**的区别：
+- 别名（如 `claude-sonnet-5`、`gpt-4o`）：始终指向该系列当前默认版本，方便试用，但可能被厂商无声升级
+- 快照 ID（如 `gpt-4o-2024-08-06`、`claude-sonnet-4-20250514`）：钉死具体版本，行为更稳定
 
-**版本固定**：生产环境建议固定模型版本号，避免厂商更新模型后行为变化导致线上故障。
+**版本固定**：生产环境建议固定到快照 ID，避免厂商更新模型后行为变化导致线上故障。
 
 ```python
 # 不推荐：使用别名，模型可能在某天被无声升级
