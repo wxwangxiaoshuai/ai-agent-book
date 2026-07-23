@@ -221,13 +221,15 @@ for event in app.stream(input, config=config, stream_mode="updates"):
     # event = {节点名: 该节点返回的 state 更新}
     yield {"type": "node_update", "node": list(event.keys())[0]}
 
-# 流式 token（生成节点的输出）
-for chunk in app.stream(input, config=config, stream_mode="messages"):
-    # chunk 含 LLM 的 token
-    yield {"type": "token", "content": chunk.content}
+# 流式 token：messages 模式 yield 的是 (msg_chunk, metadata) 元组，不是单个 chunk
+for msg_chunk, metadata in app.stream(input, config=config, stream_mode="messages"):
+    # msg_chunk.content 可能是 str，也可能是多模态 list；先取文本
+    text = msg_chunk.content if isinstance(msg_chunk.content, str) else ""
+    if text:
+        yield {"type": "token", "content": text, "node": metadata.get("langgraph_node")}
 ```
 
-`stream_mode` 选项：`updates`（节点 state 变化）、`messages`（LLM token）、`values`（完整 state）。**用 `updates` 做"步骤流"，用 `messages` 做 token 流**——和前面的两层流式对应。
+`stream_mode` 选项：`updates`（节点 state 变化）、`messages`（LLM token，值为 `(chunk, metadata)`）、`values`（完整 state）。**用 `updates` 做"步骤流"，用 `messages` 做 token 流**——和前面的两层流式对应。
 
 ### 流式的陷阱
 

@@ -1077,7 +1077,7 @@ export const curriculum: Curriculum = {
         },
         {
           id: 'L10-02',
-          title: 'LangGraph：图状态机与可微编排',
+          title: 'LangGraph：图状态机与可控编排',
           summary: '用节点和边表达 Agent 控制流。StateGraph、条件边、循环与检查点。',
           duration: 55,
           type: '实战',

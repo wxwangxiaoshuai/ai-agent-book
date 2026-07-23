@@ -188,7 +188,7 @@ researcher = Agent(
 ├─ 需要 → LangGraph（CrewAI 表达不了或不优雅）
 └─ 不需要，角色分工就够 → CrewAI
 
-需要状态���久化和重放调试吗？
+需要状态持久化和重放调试吗？
 ├─ 需要 → LangGraph（checkpointer 内建）
 └─ 不需要 → 两者都行，看上面
 ```

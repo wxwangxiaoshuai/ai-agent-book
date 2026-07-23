@@ -1,4 +1,4 @@
-## LangGraph：图状态机与可微编排
+## LangGraph：图状态机与可控编排
 
 L10-01 说所有框架底层都可画成"状态图"。LangGraph 直接把这张图交给你画——用节点和边显式表达 Agent 控制流。这一节动手用 StateGraph 实现分支、循环、持久化，你会理解为什么复杂控制流该用图，而非嵌套 if。
 
@@ -91,11 +91,10 @@ result = app.invoke({"query": "LangGraph 和 CrewAI 区别", "messages": [], "do
 
 ```
 START → retrieve → evaluate ──(good)──→ generate → END
-                        │                  ↑
-                      (poor)               │
-                        ↓                  │
-                      rewrite ─────────────┘
-                        （回到 retrieve 重试，形成循环）
+                        │
+                      (poor)
+                        ↓
+                      rewrite ──→ retrieve  （循环重试）
 ```
 
 **关键点**：循环 `rewrite → retrieve` 在手写 Loop 里要 `while` 加 `retry_count`；在 LangGraph 里就是一条边。条件分支在手写里是 `if quality == 'poor'`；在 LangGraph 里是 `add_conditional_edges` 加一个路由函数。**控制流从业务函数里剥离到图定义里**，节点函数只管"做这一步的事"。
@@ -164,10 +163,10 @@ web arxiv news
 M7 讲过 Checkpointing——失败从断点恢复。LangGraph 把它做成内建能力，叫 checkpointer。编译时传一个即可：
 
 ```python
-from langgraph.checkpoint.memory import MemorySaver
-# 生产用持久化的：SqliteSaver / PostgresSaver / RedisSaver
+from langgraph.checkpoint.memory import InMemorySaver  # 官方推荐；MemorySaver 为同义旧写法
 
-app = graph.compile(checkpointer=MemorySaver())
+app = graph.compile(checkpointer=InMemorySaver())
+# 生产用持久化的：SqliteSaver / PostgresSaver / RedisSaver
 
 # 每次执行用 thread_id 标识，状态按 thread 存
 config = {"configurable": {"thread_id": "research_001"}}
@@ -186,23 +185,27 @@ result = app.invoke(input, config=config)
 ```python
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# 用 SQLite 持久化（生产换 Postgres）
-app = graph.compile(checkpointer=SqliteSaver.from_conn_string("agent.db"))
+# SqliteSaver.from_conn_string 是上下文管理器，需 with 打开
+with SqliteSaver.from_conn_string("agent.db") as checkpointer:
+    app = graph.compile(checkpointer=checkpointer)
 
-config = {"configurable": {"thread_id": "task_42"}}
+    config = {
+        "configurable": {"thread_id": "task_42"},
+        "recursion_limit": 25,  # 防 rewrite→retrieve 死循环；默认通常为 25
+    }
 
-# 第一次跑，可能在 generate 前失败
-try:
-    result = app.invoke({"query": "...", "messages": []}, config=config)
-except Exception as e:
-    print(f"失败: {e}，状态已存 checkpoint")
+    # 第一次跑，可能在 generate 前失败
+    try:
+        result = app.invoke({"query": "...", "messages": []}, config=config)
+    except Exception as e:
+        print(f"失败: {e}，状态已存 checkpoint")
 
-# 恢复：同 thread_id，自动从断点续跑
-result = app.invoke(None, config=config)   # input=None 表示续跑
+    # 恢复：同 thread_id，自动从断点续跑
+    result = app.invoke(None, config=config)   # input=None 表示续跑
 
-# 查看历史状态（调试/重放）
-history = list(app.get_state_history(config))
-# 每个 state checkpoint 都能取出，可重放到任意节点
+    # 查看历史状态（调试/重放）
+    history = list(app.get_state_history(config))
+    # 每个 state checkpoint 都能取出，可重放到任意节点
 ```
 
 **重放的价值**：出了 bug，你可以把历史 checkpoint 拉出来，逐步看 state 怎么变的，定位是哪个节点改错了状态。这是图驱动 Agent 相比手写 Loop 的一大调试优势——状态变化有完整轨迹。
