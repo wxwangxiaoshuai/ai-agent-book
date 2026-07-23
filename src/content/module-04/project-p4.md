@@ -66,7 +66,7 @@ class DocumentIndexer:
 
     def index(self, document: str, source: str, chunk_strategy: str = "recursive",
               chunk_size: int = 500, overlap: int = 50):
-        """索引文档，支持多种分块策略"""
+        """索引文档，支持多种分块策略。同一 source 会先清旧块再写入，避免孤儿块 / ID 冲突。"""
         if chunk_strategy == "fixed":
             chunks = self._fixed_chunk(document, chunk_size, overlap)
         elif chunk_strategy == "semantic":
@@ -74,9 +74,17 @@ class DocumentIndexer:
         else:
             chunks = self._recursive_chunk(document, chunk_size, overlap)
 
+        # 先删掉该 source 的旧 chunk（Chroma where 过滤）
+        try:
+            existing = self.collection.get(where={"source": source})
+            if existing["ids"]:
+                self.collection.delete(ids=existing["ids"])
+        except Exception:
+            pass
+
         for i, chunk in enumerate(chunks):
             chunk_id = hashlib.md5(f"{source}_{i}".encode()).hexdigest()
-            self.collection.add(
+            self.collection.upsert(
                 ids=[chunk_id],
                 embeddings=[self._embed(chunk)],
                 documents=[chunk],
@@ -99,9 +107,19 @@ class DocumentIndexer:
                 current = para
             else:
                 current += "\n\n" + para if current else para
+            if len(current) >= max_size:
+                chunks.append(current.strip())
+                current = ""
         if current.strip():
             chunks.append(current.strip())
-        return chunks
+        # 合并过短块（与 L04-02 一致）
+        merged = []
+        for chunk in chunks:
+            if merged and len(chunk) < min_size:
+                merged[-1] += "\n\n" + chunk
+            else:
+                merged.append(chunk)
+        return merged
 
     def _recursive_chunk(self, text: str, size: int, overlap: int) -> list[str]:
         if overlap >= size:
@@ -137,6 +155,7 @@ class DocumentIndexer:
             return raw
         overlapped = [raw[0]]
         for i in range(1, len(raw)):
+            # 补重叠后单块可能略大于 size（约 size + overlap）
             overlapped.append(raw[i - 1][-overlap:] + raw[i])
         return overlapped
 ```
@@ -158,6 +177,12 @@ class HybridRetriever:
         self._bm25_ids = None
         self._bm25_engine = None
 
+    def invalidate(self):
+        """索引变更后调用，强制下次 retrieve 重建 BM25"""
+        self._bm25_docs = None
+        self._bm25_ids = None
+        self._bm25_engine = None
+
     def _build_bm25(self):
         """构建 BM25 索引（与向量库共用同一套 ids）"""
         all_data = self.indexer.collection.get()
@@ -167,8 +192,13 @@ class HybridRetriever:
         self._bm25_engine = BM25Okapi(tokenized)
 
     def retrieve(self, query: str, top_k: int = 10, rerank_top_n: int = 3) -> list[dict]:
-        # 确保 BM25 已构建
-        if self._bm25_engine is None:
+        # 文档数变化时自动重建 BM25（增量索引后仍正确）
+        all_data = self.indexer.collection.get()
+        if (
+            self._bm25_engine is None
+            or self._bm25_docs is None
+            or len(all_data["ids"]) != len(self._bm25_ids or [])
+        ):
             self._build_bm25()
 
         # 1. 向量检索
@@ -435,7 +465,10 @@ A: 按 RAGAS 指标诊断：Context Recall 低 → 分块太大/太小或 top-k 
 A: 原型和单机用 Chroma（零配置），生产环境用 Qdrant（Docker 部署，性能更好，支持过滤查询）。代码层面只需改 client 初始化，业务逻辑不变。
 
 **Q: Cross-encoder Reranking 太慢怎么办？**
-A: 减少候选集大小（top_k 从 20 降到 10）、用更小的模型（MiniLM-L-6 比 L-12 快 2 倍）、或用 Cohere Rerank API（云端推理，不占本地资源）。
+A: 减少候选集大小（top_k 从 20 降到 10）、用更小的模型（MiniLM 比 bge-reranker 快）、或用 Cohere Rerank API（云端推理，不占本地资源）。
+
+**Q: 索引更新后 BM25 结果不对怎么办？**
+A: `HybridRetriever` 会在文档数量变化时自动重建 BM25；也可手动调用 `retriever.invalidate()`。同一 `source` 重新 `index()` 会先删旧块再 `upsert`，避免孤儿 chunk。
 
 ### 要点回顾
 

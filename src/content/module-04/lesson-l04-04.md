@@ -166,10 +166,14 @@ class HybridRetriever:
         candidates = hybrid_search(query, self.documents, self.collection, top_k=top_k)
         docs = [c["content"] for c in candidates]
 
-        # Stage 2: Cross-encoder Reranking（精排阶段）
-        reranked = rerank(query, docs, top_n=rerank_top_n)
-
-        return reranked
+        # Stage 2: Cross-encoder Reranking（复用已加载的模型，避免重复下载）
+        pairs = [(query, doc) for doc in docs]
+        scores = self.reranker.predict(pairs)
+        ranked = sorted(zip(scores, docs), reverse=True)
+        return [
+            {"content": doc, "relevance_score": float(score)}
+            for score, doc in ranked[:rerank_top_n]
+        ]
 ```
 
 ### 效果对比

@@ -410,7 +410,7 @@ export const curriculum: Curriculum = {
             '理解 HNSW 索引参数对检索速度与精度的 trade-off',
           ],
           tags: ['Embedding', 'Vector DB', 'HNSW', 'Chroma', 'Qdrant'],
-          prerequisites: ['L04-01'],
+          prerequisites: ['L04-01', 'L04-02'],
           competency: 'RAG 工程',
         },
         {

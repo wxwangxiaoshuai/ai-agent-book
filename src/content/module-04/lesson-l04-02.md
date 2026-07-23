@@ -48,8 +48,6 @@ chunks = fixed_size_chunk(text, chunk_size=500, overlap=50)
 不按字数切，而是按语义边界切——在句子、段落或主题切换处分块。
 
 ```python
-import re
-
 def semantic_chunk(text: str, min_size: int = 200, max_size: int = 800) -> list[str]:
     """按段落+句子边界分块"""
     # 先按段落分割
@@ -136,6 +134,7 @@ def recursive_chunk(text: str, chunk_size: int = 500, overlap: int = 50) -> list
         return raw
 
     # 在相邻块之间补重叠：把前一块尾部拼到后一块开头
+    # 注意：补重叠后单块长度可能略大于 chunk_size（上限约 chunk_size + overlap）
     overlapped = [raw[0]]
     for i in range(1, len(raw)):
         prev_tail = raw[i - 1][-overlap:]
@@ -156,6 +155,8 @@ def recursive_chunk(text: str, chunk_size: int = 500, overlap: int = 50) -> list
 ```python
 def agentic_chunk(text: str, target_chunks: int = 5) -> list[str]:
     """用 LLM 识别语义边界进行分块"""
+    from openai import OpenAI
+    client = OpenAI()
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{
