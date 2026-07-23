@@ -102,25 +102,40 @@ class DevAssistantGraph:
         g.add_node("doc_agent", doc_agent)           # 查文档
         g.add_node("coder", coder_agent)             # 生成代码
         g.add_node("ops", ops_agent)                 # 运维
-        g.add_edge(START, "supervisor")
-        g.add_conditional_edges("supervisor", self.route)  # 主管决定下一步
-        for a in ["code_retriever","doc_agent","coder","ops"]:
-            g.add_edge(a, "supervisor")  # 下属干完回主管
         # HITL：提PR/部署前 interrupt（L10-03）
-        g.add_node("approve_pr", lambda s: interrupt({...}))
-        return g.compile(checkpointer=SqliteSaver(...), recursion_limit=25)
+        g.add_node("approve_pr", lambda s: interrupt({"action": "approve_pr"}))
+        g.add_edge(START, "supervisor")
+        g.add_conditional_edges(
+            "supervisor",
+            self.route,
+            {
+                "code_retriever": "code_retriever",
+                "doc_agent": "doc_agent",
+                "coder": "coder",
+                "ops": "ops",
+                "approve_pr": "approve_pr",
+                END: END,
+                "supervisor": "supervisor",  # 非法/未知路由回主管
+            },
+        )
+        for a in ["code_retriever", "doc_agent", "coder", "ops"]:
+            g.add_edge(a, "supervisor")  # 下属干完回主管
+        g.add_edge("approve_pr", "supervisor")  # 审批后继续
+        return g.compile(checkpointer=SqliteSaver.from_conn_string(":memory:"))
+        # invoke 时传 recursion_limit，勿放进 compile：
+        # config = {"configurable": {"thread_id": "..."}, "recursion_limit": 25}
 ```
 
 **Step 3：MCP 工具集成（M6）**
 
 ```python
-# 接入/自制 MCP Server（L06-04/05）
+# 接入/自制 MCP Server（L06-04/05；此处用 FastMCP 简写，正式实现见 L06-05 Server API）
 # 代码库 MCP Server：暴露 search_code / read_file / write_file
 # CI/CD MCP Server：暴露 trigger_pipeline / get_log
-mcp_tools = load_mcp_tools(["codebase_server", "cicd_server"])
+# 客户端：按 L06-04 用 MCP Client session.list_tools / call_tool 拉取工具
 
-# 自制 MCP Server 示例（L06-05）
-@mcp_server.tool()
+# 自制 MCP Server 示例（FastMCP 风格示意）
+@mcp.tool()
 def search_code(query: str) -> list:
     """在代码库搜代码"""
     return codebase_index.search(query)
@@ -180,12 +195,12 @@ function DevAssistant() {
   return (
     <div>
       <Steps>  {/* L15-06 透明度：过程可见 */}
-        <Step>🔍 检索代码库</Step>
-        <Step>📖 查技术文档</Step>
-        <Step>✍️ 生成代码</Step>
+        <Step>检索代码库</Step>
+        <Step>查技术文档</Step>
+        <Step>生成代码</Step>
       </Steps>
       <Answer>  {/* 来源可溯 */}
-        基于这段代码<Cite src="file:X.cs:42"/>建议改成...
+        基于这段代码<Cite src="app/service.ts:42"/>建议改成...
       </Answer>
       <Approval>  {/* L10-03 HITL：提PR前审 */}
         将提交 PR，修改3个文件，确认？

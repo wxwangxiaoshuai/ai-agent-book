@@ -33,33 +33,38 @@ A2A 的目标：
 A2A 的关键设计——每个 Agent 有张"名片"（Agent Card），告诉别人自己是谁、能干啥、怎么调：
 
 ```
-Agent Card（概念）：
+Agent Card（概念示意；字段名随协议演进，以官方 Agent Card 为准）：
   {
     "name": "旅行预订 Agent",
     "description": "能预订机票酒店，擅长跨国行程规划",
-    "endpoint": "https://travel-agent.example/a2a",
-    "capabilities": ["flight_booking", "hotel_booking", "itinerary_planning"],
-    "auth": {"type": "oauth2", ...},
+    "url": "https://travel-agent.example/a2a",
+    "skills": [
+      {"id": "flight_booking", "name": "机票预订"},
+      {"id": "hotel_booking", "name": "酒店预订"},
+      {"id": "itinerary_planning", "name": "行程规划"}
+    ],
+    "capabilities": {"streaming": true},
+    "authentication": {"schemes": ["oauth2"]},
     "version": "1.2"
   }
 
 价值：
   · 自描述：别的 Agent 看名片就知道你能不能干这个
   · 可发现：Agent Card 注册到目录，别的 Agent 能搜到
-  · 标准化：endpoint+capabilities 格式统一，任何 Agent 能解析
+  · 标准化：url + skills 格式统一，任何 Agent 能解析
 ```
 
 ```python
-# A2A 客户端：发现并调用别的 Agent
-def discover_agents(capability: str):
-    """在 Agent 目录里找有该能力的 Agent"""
+# A2A 客户端：发现并调用别的 Agent（示意，非协议原文）
+def discover_agents(skill_id: str):
+    """在 Agent 目录里找具备该 skill 的 Agent"""
     catalog = fetch_agent_catalog()
-    return [a for a in catalog if capability in a["capabilities"]]
+    return [a for a in catalog if any(s["id"] == skill_id for s in a.get("skills", []))]
 
 def delegate_to_agent(agent_card, task: str):
-    """按 A2A 协议委托任务给另一个 Agent"""
-    resp = http.post(agent_card["endpoint"], json={
-        "task": task,
+    """按 A2A 协议委托任务给另一个 Agent（示意）"""
+    resp = http.post(agent_card["url"], json={
+        "message": {"role": "user", "parts": [{"type": "text", "text": task}]},
         "auth": get_auth_token(agent_card),
     })
     return resp.json()   # 对方 Agent 处理后返回结果
@@ -229,20 +234,20 @@ A2A 描绘的未来——Agent 像服务一样跨组织互联：
 把 A2A 放在 Agent 生态演进的大图里看：
 
 ```
-Agent 生态演进：
-  阶段1：单体 Agent（一个 Agent 干所有）—— M5-M13
-  阶段2：多 Agent 内部协作（同框架）—— M10-M11
-  阶段3：Agent 与工具互联（MCP）—— M6
+Agent 生态演进（能力层次，非开课顺序）：
+  阶段1：单体 Agent（一个 Agent 干所有）—— M5
+  阶段2：Agent 与工具互联（MCP）—— M6
+  阶段3：多 Agent 内部协作（同框架）—— M10-M11
   阶段4：Agent 与 Agent 互联（A2A）—— 本节，进行中
   阶段5：Agent 市场生态（按需组合）—— 未来
 
 每阶段解决前一阶段的瓶颈：
-  · 单体能力有限 → 多 Agent 协作
-  · 多 Agent 同框架局限 → MCP 接外部工具
-  · 工具接够了但 Agent 间孤立 → A2A 互联
+  · 单体能力有限 → 接外部工具（MCP）
+  · 工具接够了但单 Agent 仍不够 → 多 Agent 协作
+  · 多 Agent 同框架局限、组织间孤立 → A2A 互联
 ```
 
-> 你学的全书恰好是这条演进线的具体技能。M16-04 回顾会把这条线和 16 模块的知识串成完整图谱。
+> 你学的全书恰好是这条演进线的具体技能。L16-04 回顾会把这条线和 16 模块的知识串成完整图谱。
 
 ### 要点总结
 

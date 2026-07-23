@@ -149,7 +149,8 @@ Computer Use 真正发挥价值的场景：
 ```
 
 ```python
-def reliable_computer_use(task):
+def reliable_computer_use(task, fail_limit: int = 3):
+    fail_streak = 0
     for step in range(MAX_STEPS):
         screen = take_screenshot()
         action = model.decide(task, screen, history)
@@ -157,8 +158,11 @@ def reliable_computer_use(task):
         next_screen = take_screenshot()
         # 验证：动作是否产生了预期变化
         if not verify_expected_change(screen, next_screen, action):
-            if step > 3: human_intervene()   # 连续失败转人工
+            fail_streak += 1
+            if fail_streak >= fail_limit:
+                human_intervene()  # 连续失败 N 次转人工
             continue
+        fail_streak = 0
     return result
 ```
 
@@ -176,7 +180,7 @@ Computer Use 能操作 GUI = 能做"人能做的事" = **破坏面极大**。安
   · 不可逆操作禁用/审批：rm/发送/支付等
 ```
 
-> Computer Use 的安全比调 API 更严峻——它能操作任意 GUI，意味着能做任意人在 GUI 里能做的事。**沙箱+最小权限+HITL+审计录屏**是必选项，不是可选。L13-06 的纵深防御在这里强度要更高。
+> Computer Use 的安全比调 API 更严峻——它能操作任意 GUI，意味着能做任意人在 GUI 里能做的事。**沙箱+最小权限+HITL+审计录屏**是必选项，不是可选。L13-05/L13-06（注入纵深防御 + 工具沙箱）在这里强度要更高。
 
 ### Computer Use 与 RPA 的关系
 
@@ -227,7 +231,7 @@ Computer Use 是前沿，但要清醒看它的成熟度：
 - 量化对比：API 成功率99%+快便宜稳，Computer Use 70-90%慢贵不稳但覆盖面广
 - 适合：遗留无API系统、跨无API流程、GUI测试；不适合：有API/高频/高精度/UI常变
 - 决策：有API就用API，Computer Use是无API时的兜底，不是首选——别有API还用
-- 可靠性增强：步步骤证、视觉锚点非坐标、状态恢复、HITL、限定环境
+- 可靠性增强：步骤验证、视觉锚点非坐标、状态恢复、HITL、限定环境
 - 安全边界极严：沙箱+最小权限+危险操作HITL+网络白名单+审计录屏——能操作GUI=破坏面极大
 - 与RPA：RPA固定脚本稳但脆弱，Computer Use灵活但不可靠——固定流程用RPA，多变用Computer Use，融合
 - 别当万能自动化：有边界的工具，特定场景有价值，保持关注按场景用别盲目追新
