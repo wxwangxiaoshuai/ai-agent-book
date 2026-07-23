@@ -27,7 +27,7 @@ class ToolCallTrace:
     tool_name: str
     arguments: dict
     result: Any = None
-    error: str = None
+    error: str | None = None
     start_time: float = 0
     end_time: float = 0
     duration_ms: float = 0
@@ -83,7 +83,9 @@ class AgentTracer:
             if t.error:
                 print(f"  ERROR: {t.error}")
             else:
-                print(f"  RESULT: {str(t.result)[:100]}...")
+                result_text = str(t.result)
+                suffix = "..." if len(result_text) > 100 else ""
+                print(f"  RESULT: {result_text[:100]}{suffix}")
             print(f"  TIME: {t.duration_ms:.0f}ms")
         total_ms = sum(t.duration_ms for t in self.traces)
         print(f"\n{'=' * 60}")
@@ -98,6 +100,7 @@ class AgentTracer:
 ### 集成 Tracer 到 Agent Loop
 
 ```python
+# SYSTEM_PROMPT / client / TOOLS / TOOL_MAP 沿用 L06-01
 def agent_loop_with_tracing(question: str, max_steps: int = 10) -> str:
     """带 Tracing 的 Agent Loop"""
     tracer = AgentTracer()

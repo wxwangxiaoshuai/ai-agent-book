@@ -724,7 +724,7 @@ export const curriculum: Curriculum = {
           'MCP 客户端接入演示',
           '工具调用链追踪面板',
         ],
-        stack: ['Python/TS', 'Function Calling', 'MCP SDK', 'SQLite', 'Sandbox'],
+        stack: ['Python/TS', 'Function Calling', 'MCP SDK (1.x)', 'SQLite', 'Sandbox'],
       },
     },
 

@@ -130,6 +130,8 @@ def get_weather(city: str) -> str:
 }
 ```
 
+> Schema 里的 `"default": 5` **不会**由 API 自动填入参数。执行前仍需应用层兜底：`max_results = fn_args.get("max_results", 5)`。
+
 **模板要素**：
 1. 一句话说明工具做什么
 2. 适用场景 + 不适用场景（帮模型决策）
@@ -150,6 +152,7 @@ def get_weather(city: str) -> str:
 - 动态加载：根据用户意图动态选择可用工具子集
 
 ```python
+# from openai import OpenAI; client = OpenAI()  # 沿用 L06-01
 def select_tools(user_input: str, all_tools: dict) -> list:
     """根据用户意图动态选择工具子集"""
     # 用轻量模型分类

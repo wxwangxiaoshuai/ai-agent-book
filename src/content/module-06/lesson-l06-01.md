@@ -38,8 +38,8 @@ response = client.chat.completions.create(
     }],
 )
 # 模型直接返回结构化的工具调用：
-# tool_calls: [{name: "get_weather", arguments: {"city": "北京"}}]
-# → 不需要正则解析，直接用
+# tool_calls: [{name: "get_weather", arguments: '{"city": "北京"}'}]
+# → arguments 是 JSON 字符串，需 json.loads 后再用；不需要正则解析工具名
 ```
 
 ### Function Calling 的数据流
@@ -60,6 +60,7 @@ response = client.chat.completions.create(
 7. 模型基于工具结果生成最终回答
 ```
 
+第 3 步的决策依据主要是工具的 `name` / `description` / 参数描述（语义匹配）。工具写得越好，选对的概率越高——设计原则见 L06-02。
 ### 完整的 Function Calling 循环
 
 ```python
@@ -75,23 +76,30 @@ def get_weather(city: str) -> str:
     return weather_db.get(city, f"{city}：暂无天气数据")
 
 def get_time(timezone: str) -> str:
-    """模拟时间查询"""
+    """按 IANA 时区返回当前时间"""
     from datetime import datetime
-    return f"{timezone} 当前时间: {datetime.now().strftime('%H:%M')}"
+    from zoneinfo import ZoneInfo
+    try:
+        now = datetime.now(ZoneInfo(timezone))
+    except Exception:
+        return f"错误：无效时区 '{timezone}'。请使用 IANA 时区，如 'Asia/Shanghai'。"
+    return f"{timezone} 当前时间: {now.strftime('%H:%M')}"
 
-# 2. 定义工具 Schema
+# 2. 定义工具 Schema（生产建议开启 strict，并禁止额外字段）
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "get_weather",
             "description": "获取指定城市的当前天气",
+            "strict": True,
             "parameters": {
                 "type": "object",
                 "properties": {
                     "city": {"type": "string", "description": "城市名称，如'北京'"},
                 },
                 "required": ["city"],
+                "additionalProperties": False,
             },
         },
     },
@@ -100,21 +108,40 @@ TOOLS = [
         "function": {
             "name": "get_time",
             "description": "获取指定时区的当前时间",
+            "strict": True,
             "parameters": {
                 "type": "object",
                 "properties": {
                     "timezone": {"type": "string", "description": "时区，如'Asia/Shanghai'"},
                 },
                 "required": ["timezone"],
+                "additionalProperties": False,
             },
         },
     },
 ]
-
 # 3. 工具执行映射
 TOOL_MAP = {
     "get_weather": get_weather,
     "get_time": get_time,
+}
+
+# 3.5 参数校验：Strict Schema 降低风险，但仍建议在应用层兜底
+def parse_tool_args(raw: str, fn_name: str, required: list[str] | None = None) -> dict:
+    try:
+        args = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"工具 '{fn_name}' 的参数不是合法 JSON: {e}") from e
+    if not isinstance(args, dict):
+        raise ValueError(f"工具 '{fn_name}' 的参数必须是 object")
+    for key in required or []:
+        if key not in args:
+            raise ValueError(f"工具 '{fn_name}' 缺少必填参数: {key}")
+    return args
+
+REQUIRED_ARGS = {
+    "get_weather": ["city"],
+    "get_time": ["timezone"],
 }
 
 # 4. Function Calling 循环
@@ -140,7 +167,20 @@ def chat_with_tools(user_input: str, max_rounds: int = 5) -> str:
         # 执行每个工具调用
         for tool_call in msg.tool_calls:
             fn_name = tool_call.function.name
-            fn_args = json.loads(tool_call.function.arguments)
+            try:
+                fn_args = parse_tool_args(
+                    tool_call.function.arguments,
+                    fn_name,
+                    REQUIRED_ARGS.get(fn_name),
+                )
+            except ValueError as e:
+                result = f"错误: {e}"
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result,
+                })
+                continue
 
             print(f"调用工具: {fn_name}({fn_args})")
 
@@ -159,7 +199,6 @@ def chat_with_tools(user_input: str, max_rounds: int = 5) -> str:
             })
 
     return "达到最大轮次限制。"
-
 # 运行
 print(chat_with_tools("北京和上海现在的天气怎么样？现在几点了？"))
 ```
@@ -200,27 +239,28 @@ response = claude.messages.create(
     messages=[{"role": "user", "content": "北京天气怎么样？"}],
 )
 
-# 解析工具调用
-for block in response.content:
-    if block.type == "tool_use":
-        tool_name = block.name
-        tool_input = block.input
-        result = get_weather(**tool_input)
-
-        # 把结果发回
-        response2 = claude.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            tools=[...],  # 同上
-            messages=[
-                {"role": "user", "content": "北京天气怎么样？"},
-                {"role": "assistant", "content": response.content},
-                {"role": "user", "content": [
-                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
-                ]},
-            ],
-        )
-        print(response2.content[0].text)
+# 一次响应可能含多个 tool_use：先全部执行，再一次性回传 tool_result
+tool_uses = [b for b in response.content if b.type == "tool_use"]
+if tool_uses:
+    tool_results = []
+    for block in tool_uses:
+        result = get_weather(**block.input)
+        tool_results.append({
+            "type": "tool_result",
+            "tool_use_id": block.id,
+            "content": result,
+        })
+    response2 = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        tools=[...],  # 同上
+        messages=[
+            {"role": "user", "content": "北京天气怎么样？"},
+            {"role": "assistant", "content": response.content},
+            {"role": "user", "content": tool_results},
+        ],
+    )
+    print(response2.content[0].text)
 ```
 
 ### tool_choice：控制模型的工具使用
@@ -248,5 +288,5 @@ response = client.chat.completions.create(
 - 数据流：定义 Schema → 模型决策 → 返回 tool_call → 执行工具 → 结果发回 → 模型生成回答
 - OpenAI 和 Anthropic 的机制相同但 API 格式不同（tool_calls vs tool_use block）
 - tool_choice 控制模型行为：auto（自决）、none（禁用）、required（必调）、指定工具
-- Function Calling 比文本解析可靠得多——模型不会"幻觉工具名"，参数一定是合法 JSON
+- Function Calling 比文本解析可靠：工具名被约束在已注册集合内；仍可能选错工具或传错参数，需 Schema（可开 `strict`）+ 应用层校验 + 错误信息引导
 - M5 的 ReAct Agent 可以直接用 Function Calling 替换文本解析，循环逻辑不变
