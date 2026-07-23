@@ -59,23 +59,25 @@ def sample_frames_uniform(video_path: str, interval_sec: float = 2.0) -> list:
     return frames
 
 def sample_frames_keyframe(video_path: str, max_frames: int = 30) -> list:
-    """关键帧采样：基于场景变化（帧差分）"""
+    """关键帧采样：基于场景变化（帧差分），返回 [(frame, timestamp_sec), ...]"""
     cap = cv2.VideoCapture(video_path)
-    frames, prev_gray, last_saved = [], None, -1
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    frames, prev_gray, last_saved_idx = [], None, -999
+    idx = 0
     while True:
         ret, frame = cap.read()
         if not ret: break
+        ts = idx / fps
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if prev_gray is not None:
             diff = cv2.absdiff(gray, prev_gray).mean()
-            if diff > 30:   # 场景变化阈值
-                if len(frames) - last_saved > 5:   # 避免太密
-                    frames.append(frame); last_saved = len(frames)
+            if diff > 30 and idx - last_saved_idx > 5:   # 场景变化且至少隔 5 帧
+                frames.append((frame, ts)); last_saved_idx = idx
         else:
-            frames.append(frame); last_saved = 0
+            frames.append((frame, ts)); last_saved_idx = idx
         prev_gray = gray
+        idx += 1
     cap.release()
-    # 限制总数（token 预算）
     return frames[:max_frames]
 ```
 
@@ -105,17 +107,20 @@ def sample_frames_keyframe(video_path: str, max_frames: int = 30) -> list:
 ```
 
 ```python
-def understand_video(frames: list, fps: float, question: str) -> str:
-    """多模态理解视频帧序列"""
+import base64
+from openai import OpenAI
+client = OpenAI()
+
+def understand_video(frames: list, interval_sec: float, question: str) -> str:
+    """多模态理解视频帧序列。frames 为 [frame, ...] 或 [(frame, ts), ...]"""
     content = [{"type": "text", "text":
-        f"以下是视频按时间顺序的关键帧（每帧间隔约{1/fps:.1f}秒）。"
+        f"以下是视频按时间顺序的关键帧（采样间隔约 {interval_sec:.1f} 秒）。"
         f"基于帧序列回答：{question}"}]
-    for i, frame in enumerate(frames):
-        # 帧转 base64
+    for i, item in enumerate(frames):
+        frame, ts = item if isinstance(item, tuple) else (item, i * interval_sec)
         _, buf = cv2.imencode(".jpg", frame)
         b64 = base64.b64encode(buf).decode()
-        time_sec = i * (1/fps) * 2  # 假设采样间隔2秒（示例简化）
-        content.append({"type": "text", "text": f"[第{i+1}帧 / {time_sec:.1f}秒]"})
+        content.append({"type": "text", "text": f"[第{i+1}帧 / {ts:.1f}秒]"})
         content.append({"type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
 
@@ -145,19 +150,26 @@ def understand_video(frames: list, fps: float, question: str) -> str:
 ```
 
 ```python
-def locate_event(video_path: str, event_desc: str) -> list:
-    """定位事件发生的时间段"""
+def frame_to_b64(frame) -> str:
+    _, buf = cv2.imencode(".jpg", frame)
+    return base64.b64encode(buf).decode()
+
+def locate_event(video_path: str, event_desc: str, segment_sec: float = 3.0) -> list:
+    """定位事件发生的时间段：每 segment_sec 取中间帧粗筛"""
     cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    step = max(1, int(fps * segment_sec))
     segments = []   # [(start_sec, end_sec, frame)]
-    # 每 3 秒一段，取每段中间帧
+    idx = 0
     while True:
         ret, frame = cap.read()
         if not ret: break
-        # ... 采样分段（简化）
+        if idx % step == step // 2:   # 每段中间帧
+            start = (idx // step) * segment_sec
+            segments.append((start, start + segment_sec, frame))
+        idx += 1
     cap.release()
 
-    # 逐段判断是否含事件
     located = []
     for start, end, frame in segments:
         b64 = frame_to_b64(frame)
@@ -191,16 +203,14 @@ def locate_event(video_path: str, event_desc: str) -> list:
 ```python
 def extract_highlights(video_path: str, top_n: int = 3) -> dict:
     """提取关键片段 + 摘要"""
-    # 1. 采样并分段理解
     frames = sample_frames_keyframe(video_path, max_frames=20)
-    # 2. 让模型识别最重要的 N 段
-    understanding = understand_video(frames, 1.0,
-        "识别视频中最重要的几个时刻/片段，标注大致时间，并说明为何���要")
-    # 3. 按模型指示的时间切原始视频片段（FFmpeg）
+    # 用帧间真实时间差估采样间隔（首尾差 / 帧数）
+    interval = (frames[-1][1] - frames[0][1]) / max(len(frames) - 1, 1) if len(frames) > 1 else 2.0
+    understanding = understand_video(frames, interval,
+        "识别视频中最重要的几个时刻/片段，标注大致时间，并说明为何重要")
     segments = parse_time_segments(understanding, top_n=top_n)
     clips = [cut_clip(video_path, s, e) for s, e in segments]
-    # 4. 整体摘要
-    summary = understand_video(frames, 1.0,
+    summary = understand_video(frames, interval,
         "用一句话概括整段视频的核心内容")
     return {"clips": clips, "summary": summary, "understanding": understanding}
 ```
@@ -210,11 +220,11 @@ def extract_highlights(video_path: str, top_n: int = 3) -> dict:
 ```python
 import subprocess
 def cut_clip(video_path: str, start: float, end: float) -> str:
-    """用 FFmpeg 切片段"""
+    """用 FFmpeg 切片段（-y 须在输出路径前）"""
     out = f"clip_{start}_{end}.mp4"
-    subprocess.run(["ffmpeg", "-i", video_path,
+    subprocess.run(["ffmpeg", "-y", "-i", video_path,
                      "-ss", str(start), "-to", str(end),
-                     "-c", "copy", out, "-y"], check=True)
+                     "-c", "copy", out], check=True)
     return out
 ```
 

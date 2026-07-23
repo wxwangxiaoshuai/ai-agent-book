@@ -162,9 +162,20 @@ PDF/图片文档
 ```
 
 ```python
+def pdf_to_images(pdf_path: str) -> list[str]:
+    """PDF 每页渲成 PNG 路径（PyMuPDF）"""
+    import fitz, tempfile, os
+    doc = fitz.open(pdf_path)
+    paths = []
+    for i, page in enumerate(doc):
+        pix = page.get_pixmap()
+        path = os.path.join(tempfile.gettempdir(), f"pdf_page_{i}.png")
+        pix.save(path)
+        paths.append(path)
+    return paths
+
 def understand_document(pdf_path: str, schema: dict) -> dict:
     """多页文档理解"""
-    # 1. PDF 转每页图片（用 pdf2image / PyMuPDF）
     page_images = pdf_to_images(pdf_path)   # [page1.png, page2.png, ...]
 
     # 2. 多页一起送多模态模型（Gemini 多图强项）

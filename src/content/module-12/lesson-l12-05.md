@@ -35,7 +35,13 @@ L12-02 提过多页一起送。但超长 PDF（几十上百页）一起送会超
 
 ```python
 import fitz  # PyMuPDF
-import json
+import json, base64
+from openai import OpenAI
+client = OpenAI()
+
+def render_page_image(doc, page_index: int) -> bytes:
+    """渲染一页为 PNG bytes（供 base64 编码）"""
+    return doc[page_index].get_pixmap().tobytes("png")
 
 def parse_long_pdf(pdf_path: str, schema: dict, batch_size: int = 5) -> dict:
     """长 PDF 分批理解"""
@@ -155,16 +161,26 @@ def extract_table(image_path: str) -> dict:
 ```
 
 ```python
+def render_page_image_pdf(pdf_path: str, page: int) -> bytes:
+    """PDF 指定页 → PNG bytes"""
+    doc = fitz.open(pdf_path)
+    return doc[page].get_pixmap().tobytes("png")
+
+def extract_table_from_image(png_bytes: bytes) -> dict:
+    """路1：多模态从页面图提表（复用 extract_table 的 prompt）"""
+    # 写临时文件或直接喂 bytes；此处用内存路径示意
+    import tempfile, os
+    path = os.path.join(tempfile.gettempdir(), "page.png")
+    open(path, "wb").write(png_bytes)
+    return extract_table(path)
+
 def extract_table_verified(pdf_path: str, page: int) -> dict:
     """双路校验表格提取"""
-    # 路1：多模态
     page_img = render_page_image_pdf(pdf_path, page)
     llm_table = extract_table_from_image(page_img)
-    # 路2：pdfplumber（基于版式）
     import pdfplumber
     with pdfplumber.open(pdf_path) as pdf:
         plumber_table = pdf.pages[page].extract_table()
-    # 校验：对比两路结果，标记不一致
     return reconcile_tables(llm_table, plumber_table)
 ```
 
@@ -172,7 +188,7 @@ def extract_table_verified(pdf_path: str, page: int) -> dict:
 
 ### 提取校验管道
 
-把所有���觉提取放进统一的校验管道，而非信模型一眼：
+把所有视觉提取放进统一的校验管道，而非信模型一眼：
 
 ```
 校验管道（每个提取结果过一遍）：
@@ -234,4 +250,4 @@ def validate_extraction(result: dict, schema: dict) -> dict:
 - 校验管道五步：格式校验、范围校验、一致性校验、双路校验、置信度标注——视觉提取要可校验可溯源
 - 成本：深度解析极贵（几十次多模态调用）；优化靠分而治之（粗筛便宜+精分析强）+ 版式工具免费预处理 + 缓存
 - 务实路径：便宜版+版式工具先跑，关键部分再上强模型，别一上来全用旗舰解析全文档
-- M12 收官：从模型选型(L01)到视觉(L02/L05)、语音(L03)、视频(L04)，你已能构建多模态 Agent
+- M12 收官：从模型选型(L12-01)到视觉(L12-02/L12-05)、语音(L12-03)、视频(L12-04)，你已能构建多模态 Agent

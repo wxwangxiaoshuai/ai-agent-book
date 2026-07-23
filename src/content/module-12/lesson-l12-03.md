@@ -37,31 +37,41 @@
 | 云厂商 STT（Azure/Google） | 集成全、多语言 | 已用云生态 |
 
 ```python
-# Whisper 本地方案（隐私+免费）
-import openai
+# OpenAI Whisper API（云端批处理；本地开源 Whisper 见下方注释）
+from openai import OpenAI
+client = OpenAI()
 
 def stt(audio_path: str) -> str:
-    """语音转文本（Whisper）"""
+    """语音转文本（OpenAI Whisper API）"""
     with open(audio_path, "rb") as f:
-        resp = openai.Audio.transcribe(
+        resp = client.audio.transcriptions.create(
             model="whisper-1", file=f, language="zh")
     return resp.text
 
-# Deepgram 流式（实时）
-from deepgram import DeepgramClient
-dg = DeepgramClient()
+# 本地开源 Whisper（隐私+免费，需 pip install openai-whisper）：
+# import whisper
+# model = whisper.load_model("base")
+# return model.transcribe(audio_path, language="zh")["text"]
 
-async def stt_stream(audio_stream):
-    """实时流式转写——边说边出文字"""
-    result = await dg.listen.async.v("1").stream(audio_stream)
-    return result.channel.alternatives[0].transcript
+# Deepgram 流式（实时；以官方 SDK 文档为准，勿写 dg.listen.async——async 是关键字）
+from deepgram import DeepgramClient
+dg = DeepgramClient()  # 需 DEEPGRAM_API_KEY
+
+async def stt_stream(audio_chunks):
+    """实时流式转写——边说边出文字（示意）"""
+    # 生产用 WebSocket：dg.listen.websocket.v("1") 或 AsyncDeepgramClient.connect
+    # 此处伪代码：把音频块推入连接，异步收取 transcript 事件
+    transcripts = []
+    async for chunk in audio_chunks:
+        transcripts.append(await dg_transcribe_chunk(dg, chunk))  # 业务封装
+    return "".join(transcripts)
 ```
 
 **关键区别——批处理 vs 流式**：
 - 批处理：用户说完一整句，一次性转写。延迟高，但准确（有完整上下文）。
 - 流式：边说边出文字。延迟低，但可能因没上下文而错。
 
-**实时对话用流式**，批处理用于"上传录音转写"（L12-02 场景）。
+**实时对话用流式**，批处理用于"上传录音转写"（P12 语音分析场景）。
 
 ### TTS：文本转语音
 
@@ -78,7 +88,7 @@ async def stt_stream(audio_stream):
 # OpenAI TTS
 def tts(text: str) -> bytes:
     """文本转语音"""
-    resp = openai.audio.speech.create(
+    resp = client.audio.speech.create(
         model="tts-1", voice="alloy", input=text)
     return resp.content   # 音频 bytes
 
@@ -163,6 +173,16 @@ class VoiceAgent:
                 await self.interrupt()   # 打断自己
             # 正常处理
             self.current_task = asyncio.create_task(self.respond(user_audio))
+
+    async def respond(self, user_audio):
+        """STT → LLM → TTS；TTS 播放期间 speaking=True"""
+        text = await stt_stream_once(user_audio)
+        reply = await llm_stream(text)
+        self.speaking = True
+        try:
+            await play_tts(reply)   # 播放中可被 interrupt 取消
+        finally:
+            self.speaking = False
 
     async def interrupt(self):
         """打断当前回复"""
