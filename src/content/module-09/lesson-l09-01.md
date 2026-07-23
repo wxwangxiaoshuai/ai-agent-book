@@ -48,7 +48,7 @@ Agent Loop（ReAct）：
 
 ### 执行方案谱系：从最危险到最安全
 
-让 Agent 跑代码，跑在哪？安全等级从低到高：
+让 Agent 跑代码，跑在哪？安全等级从低到高（工具调用基础见 L06-01 Function Calling——代码执行本质是一种特殊工具）：
 
 ```
 危险 ◀─────────────────────────────────────────▶ 安全
@@ -68,19 +68,30 @@ Agent Loop（ReAct）：
 ```python
 # 极度危险，仅用于理解原理，生产绝不可用
 def dangerous_exec(code: str):
-    exec(code, {"__builtins__": {}})  # 限制 builtins 也没用
+    exec(code)  # 共享 Agent 进程的文件系统、网络、权限
 
 dangerous_exec("""
 import os
-os.system("rm -rf /")      # 删库
-import socket
-socket...                   # 外连
+os.system("echo pwned")   # 真实危害：能执行任意 shell
 """)
 ```
 
-**为什么危险**：`exec` 跑在 Agent 自己的进程里，共享文件系统、网络、权限。模型一旦"幻觉"出恶意代码（或被注入），整个宿主机沦陷。限制 `__builtins__` 也防不住——Python 的沙箱逃逸是出了名的容易（`().__class__.__mro__` 之类）。
+有人以为「清空 builtins 就安全」：
+
+```python
+# 仍危险：空 builtins 挡不住常见沙箱逃逸，且下面的 import 示例会直接 ImportError
+# 不要把「限制 builtins」当成可用沙箱
+exec(code, {"__builtins__": {}})
+# 逃逸手法示意（勿在生产依赖）：().__class__.__mro__[1].__subclasses__() ...
+```
+
+**为什么危险**：`exec` 跑在 Agent 自己的进程里。模型一旦"幻觉"出恶意代码（或被注入），整个宿主机沦陷。限制 `__builtins__` 也防不住——Python 的沙箱逃逸是出了名的容易。
 
 > 结论：**直接 exec 是反面教材**。它出现在这里只是为了让你知道"底线有多低"，以及理解为什么后面所有方案都在想办法隔离。
+
+### 方案 1.5：REPL / 交互式解释器
+
+REPL（如 `python -i`、Jupyter kernel）适合人类探索，**不适合作为 Agent 生产执行面**：会话状态会跨请求污染、难统一超时/资源上限、安全边界模糊。Agent 通常用「一次性 subprocess / 容器」而非长生命周期 REPL；若需要多步状态，应显式管理沙箱生命周期（见 L09-03 长会话），而不是开一个裸 REPL。
 
 ### 方案二：subprocess + 受限环境
 
@@ -90,19 +101,23 @@ socket...                   # 外连
 import subprocess, tempfile, os
 
 def subprocess_exec(code: str, timeout: int = 10) -> str:
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+    sandbox_dir = tempfile.mkdtemp(prefix="sandbox_")
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".py", delete=False, dir=sandbox_dir,
+    ) as f:
         f.write(code)
         script = f.name
     try:
         result = subprocess.run(
             ["python", script],
             capture_output=True, text=True, timeout=timeout,
-            # 限制环境变量、工作目录
-            env={"PATH": "/usr/bin"}, cwd="/tmp/sandbox",
+            env={"PATH": "/usr/bin:/bin", "HOME": sandbox_dir},
+            cwd=sandbox_dir,
         )
         return result.stdout + result.stderr
     finally:
         os.unlink(script)
+        os.rmdir(sandbox_dir)
 ```
 
 **比 exec 好在哪**：代码在子进程跑，主进程崩溃不影响；有 timeout；能控制工作目录和环境变量。
@@ -137,10 +152,12 @@ def subprocess_exec(code: str, timeout: int = 10) -> str:
 不想自己运维 Docker？把沙箱做成服务，按需调用：
 
 ```python
-# E2B 示例（L09-03 详讲）
-from e2b import Sandbox
-sb = Sandbox()
-result = sb.run("import pandas as pd\nprint(pd.__version__)")
+# E2B 示例（L09-03 详讲；需 pip install e2b-code-interpreter）
+from e2b_code_interpreter import Sandbox
+
+with Sandbox.create() as sb:
+    execution = sb.run_code("import pandas as pd\nprint(pd.__version__)")
+    print("".join(execution.logs.stdout))
 # 代码跑在 E2B 的云端微 VM 里，和你本机完全隔离
 ```
 
@@ -173,7 +190,7 @@ safe_execute("mean", [1,2,3])  # 2.0
 
 > 什么时候选 DSL？当你的场景**足够窄且固定**（如只做表格统计），不值得承担任意代码的风险时。一旦需求"灵活多变"，DSL 就不够用，必须上真沙箱。
 
-### 四方案对比总表
+### 五方案对比总表
 
 | 方案 | 隔离强度 | 启动延迟 | 成本 | 灵活性 | 适用场景 |
 |------|---------|---------|------|--------|---------|
@@ -201,7 +218,7 @@ safe_execute("mean", [1,2,3])  # 2.0
 无论选哪个，都必须叠加 L09-04 的安全审计：注入防护 + 输出审查 + 资源审计
 ```
 
-> 关键认知：**隔离只是第一道防线**。哪怕用了 Docker，仍要做输入注入防护（防止 Agent 被诱导写恶意代码）、输出审查（防止结果里夹带敏感信息）、资源审计（监控异常调用）。安全是纵深防御，不是单点。后续三节分别落地 Docker（L02）、云端（L03）、安全审计（L04）。
+> 关键认知：**隔离只是第一道防线**。哪怕用了 Docker，仍要做输入注入防护（防止 Agent 被诱导写恶意代码）、输出审查（防止结果里夹带敏感信息）、资源审计（监控异常调用）。安全是纵深防御，不是单点。后续三节分别落地 Docker（L09-02）、云端（L09-03）、安全审计（L09-04）。
 
 ### 要点总结
 

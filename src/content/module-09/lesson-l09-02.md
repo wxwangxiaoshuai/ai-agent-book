@@ -57,7 +57,9 @@ def run_sandboxed(code: str, timeout: int = 10) -> dict:
         user="nobody",                    # 非 root 运行
         read_only=True,                   # 根文件系统只读
         tmpfs={"/tmp": "size=10m,mode=1777"},  # 临时文件系统，10MB，容器停就消失
-        security_opt=["no-new-privileges"],     # 禁止提权
+        # 磁盘配额：部分存储驱动支持 storage_opt；通用做法是靠 tmpfs size 限制可写空间
+        # storage_opt={"size": "100m"},  # overlay size 限制（视 Docker/存储驱动而定）
+        security_opt=["no-new-privileges", "seccomp=default"],  # 禁提权 + 默认 seccomp
         cap_drop=["ALL"],                 # 删除所有 Linux capabilities
         working_dir="/tmp",
     )
@@ -147,23 +149,30 @@ r = run_sandboxed(normal)
 
 **为什么不用 volume 持久化**：代码执行沙箱的原则是"用完即弃"。持久化 volume 意味着上一次执行的残留文件可能被下次读到——既可能泄露，也可能造成状态污染。`tmpfs` + `remove` 保证每次执行都是干净环境。
 
+先用交互面板感受「攻击码 → 哪一层防线拦住」；再动手实现 Docker 沙箱。
+
+::interactive{type="sandboxDemo"}
+
 ### 文件传入传出：用 tar 管道
 
 Agent 经常要"给沙箱一个数据文件，跑完拿回结果"。容器只读根目录，不能直接写文件——用 `put_archive` 把数据以 tar 流塞进 `/tmp`：
 
 ```python
 def run_with_file(code: str, input_files: dict, timeout=10) -> dict:
-    """传文件进沙箱执行。input_files: {文件名: 内容bytes}"""
+    """传文件进沙箱执行。input_files: {文件名: 内容bytes}
+    关键：必须先 start（tmpfs 挂载后）再 put_archive，否则写入会被 tmpfs 覆盖。
+    """
     container = client.containers.create(
         image=SANDBOX_IMAGE,
-        command=["python", "/tmp/main.py"],
+        command=["sleep", "infinity"],  # 占位，避免 start 时抢跑 /tmp/main.py
         detach=True, network_mode="none", mem_limit="256m", memswap_limit="256m",
         cpu_quota=50000, pids_limit=50, user="nobody", read_only=True,
         tmpfs={"/tmp": "size=50m,mode=1777"},
-        security_opt=["no-new-privileges"], cap_drop=["ALL"], working_dir="/tmp",
+        security_opt=["no-new-privileges", "seccomp=default"],
+        cap_drop=["ALL"], working_dir="/tmp",
     )
     try:
-        # 1. 把代码和输入文件打包成 tar，放进 /tmp
+        container.start()  # 先挂载 tmpfs
         tar_stream = io.BytesIO()
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
             tar.addfile(*_make_tar_member("main.py", code.encode()))
@@ -172,11 +181,15 @@ def run_with_file(code: str, input_files: dict, timeout=10) -> dict:
         tar_stream.seek(0)
         container.put_archive("/tmp", tar_stream)
 
-        container.start()
-        result = container.wait(timeout=timeout)
-        stdout = container.logs(stdout=True, stderr=False).decode()
-        stderr = container.logs(stdout=False, stderr=True).decode()
-        return {"exit_code": result["StatusCode"], "stdout": stdout, "stderr": stderr}
+        exec_result = container.exec_run(
+            ["python", "/tmp/main.py"], demux=True,
+        )
+        out, err = exec_result.output if isinstance(exec_result.output, tuple) else (exec_result.output, b"")
+        return {
+            "exit_code": exec_result.exit_code,
+            "stdout": (out or b"").decode(errors="replace"),
+            "stderr": (err or b"").decode(errors="replace"),
+        }
     finally:
         container.remove(force=True)
 

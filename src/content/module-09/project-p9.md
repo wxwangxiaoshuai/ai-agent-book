@@ -153,17 +153,18 @@ SENSITIVE = [
     (r"ghp_[a-zA-Z0-9]{36}", "GitHub Token"),
     (r"(?:\d{1,3}\.){3}\d{1,3}", "IP地址"),
 ]
-def review_output(stdout: str, stderr: str) -> tuple[str, list]:
-    """输出审查脱敏"""
+def review_output(stdout: str, stderr: str) -> tuple[str, str, list]:
+    """输出审查脱敏（stdout/stderr 都要处理，防密钥从 stderr 绕过）"""
     findings = []
     out = stdout + stderr
     for pat, name in SENSITIVE:
         if re.search(pat, out):
             findings.append(f"输出含疑似{name}")
-    clean = stdout
+    clean_out, clean_err = stdout, stderr
     for pat, _ in SENSITIVE:
-        clean = re.sub(pat, "[REDACTED]", clean)
-    return clean, findings
+        clean_out = re.sub(pat, "[REDACTED]", clean_out)
+        clean_err = re.sub(pat, "[REDACTED]", clean_err)
+    return clean_out, clean_err, findings
 ```
 
 **Step 3：审计与告警**
@@ -197,7 +198,9 @@ class AuditLogger:
         if r.output_blocked:
             self._alert(f"执行{r.exec_id} 输出被拦: {r.block_reasons}")
         if r.exit_code == 137:
-            self._alert(f"执行{r.exec_id} OOM/超时，疑似资源攻击")
+            self._alert(f"执行{r.exec_id} OOM，疑似资源攻击")
+        if r.exit_code == -1:
+            self._alert(f"执行{r.exec_id} 超时")
         if self._hourly[key] > 50:
             self._alert(f"用户{r.user_id} 高频执行: {self._hourly[key]}次/小时")
     def _alert(self, msg): print(f"[ALERT] {msg}")
@@ -252,13 +255,13 @@ def exec_code(req: ExecRequest):
     record.peak_memory_mb = r["peak_memory_mb"]
 
     # 第四层：输出审查
-    clean, findings = review_output(r["stdout"], r["stderr"])
+    clean_out, clean_err, findings = review_output(r["stdout"], r["stderr"])
     if findings:
         record.output_blocked = True; record.block_reasons = findings
 
     audit_log.record(record)
     return {"exec_id": eid, "exit_code": r["exit_code"],
-            "stdout": clean, "stderr": r["stderr"],
+            "stdout": clean_out, "stderr": clean_err,
             "duration_ms": r["duration_ms"], "findings": findings}
 
 @app.get("/health")
@@ -358,7 +361,7 @@ print(f"并发100次，成功{sum(1 for r in results if r==0)}次")
 | 审计日志 | 全量记录 | 有 | 有 | ✅ |
 | 异常告警 | 高频调用 | 告警 | 触发 | ✅ |
 
-结论：9/9 项通过，沙箱服务满足生产级代码执行安全基线。
+结论：上表为**报告模板**（需自行跑测填写 ✅/❌），勿直接当作实测结果。
 ```
 
 ### 进阶挑战

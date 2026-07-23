@@ -9,6 +9,7 @@ import { PromptTemplateTester } from './interactive/PromptTemplateTester'
 import { AgentLoopVisualizer } from './interactive/AgentLoopVisualizer'
 import { EmbeddingExplorer } from './interactive/EmbeddingExplorer'
 import { HarnessMonitor } from './interactive/HarnessMonitor'
+import { SandboxDemo } from './interactive/SandboxDemo'
 
 const componentMap: Record<string, React.ComponentType<Record<string, string>>> = {
   tokenizer: TokenizerDemo,
@@ -17,6 +18,7 @@ const componentMap: Record<string, React.ComponentType<Record<string, string>>> 
   agentLoop: AgentLoopVisualizer,
   embedding: EmbeddingExplorer,
   harnessMonitor: HarnessMonitor,
+  sandboxDemo: SandboxDemo,
 }
 
 function parseInteractiveDirective(
