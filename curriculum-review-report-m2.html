@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M2 Prompt 工程实战 — 课程内容 Review 报告</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f8f9fa; color: #1a1a2e; line-height: 1.7;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .subtitle { color: #6b7280; font-size: 15px; margin-bottom: 32px; }
+  h2 { font-size: 22px; margin: 32px 0 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }
+  h3 { font-size: 17px; margin: 20px 0 10px; }
+  .score-card {
+    display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap;
+  }
+  .score-box {
+    flex: 1; min-width: 140px; background: #fff; border-radius: 12px;
+    padding: 20px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .score-box .label { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+  .score-box .value { font-size: 28px; font-weight: 700; }
+  .score-box .value.green { color: #059669; }
+  .score-box .value.yellow { color: #d97706; }
+  .score-box .value.red { color: #dc2626; }
+  .summary-bar {
+    height: 24px; border-radius: 12px; overflow: hidden; display: flex;
+    margin: 16px 0 8px;
+  }
+  .summary-bar > div { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
+  .issue-card {
+    background: #fff; border-radius: 10px; padding: 20px 24px; margin-bottom: 14px;
+    border-left: 4px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .issue-card.p0 { border-left-color: #dc2626; }
+  .issue-card.p1 { border-left-color: #f59e0b; }
+  .issue-card.p2 { border-left-color: #6366f1; }
+  .issue-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .badge { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 4px; }
+  .badge.p0 { background: #fef2f2; color: #dc2626; }
+  .badge.p1 { background: #fffbeb; color: #d97706; }
+  .badge.p2 { background: #eef2ff; color: #6366f1; }
+  .badge.loc { background: #f3f4f6; color: #6b7280; }
+  .issue-title { font-size: 15px; font-weight: 600; }
+  .issue-body { font-size: 14px; color: #4b5563; }
+  .issue-body code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+  .issue-body pre { background: #1e293b; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; overflow-x: auto; margin: 10px 0; font-size: 13px; }
+  .issue-body ul { padding-left: 20px; margin: 6px 0; }
+  .issue-body li { margin: 3px 0; }
+  .fix-suggestion { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 13px; }
+  .fix-suggestion strong { color: #059669; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th { background: #f9fafb; text-align: left; padding: 10px 12px; border-bottom: 2px solid #e5e7eb; font-size: 13px; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; }
+  .lesson-section { margin-bottom: 28px; }
+  .lesson-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .lesson-num { background: #4f46e5; color: #fff; font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 6px; }
+  .lesson-stats { font-size: 13px; color: #6b7280; }
+  .stat-pass { color: #059669; font-weight: 600; }
+  .stat-warn { color: #d97706; font-weight: 600; }
+  .stat-fail { color: #dc2626; font-weight: 600; }
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>M2 Prompt 工程实战 — 课程内容 Review 报告</h1>
+<p class="subtitle">审查范围：L02-01 ~ L02-05 + P2 项目 | 审查日期：2026-07-23</p>
+
+<div class="score-card">
+  <div class="score-box">
+    <div class="label">总体评分</div>
+    <div class="value yellow">7.8 / 10</div>
+  </div>
+  <div class="score-box">
+    <div class="label">P0 必须修复</div>
+    <div class="value red">3</div>
+  </div>
+  <div class="score-box">
+    <div class="label">P1 建议修复</div>
+    <div class="value yellow">4</div>
+  </div>
+  <div class="score-box">
+    <div class="label">P2 锦上添花</div>
+    <div class="value green">7</div>
+  </div>
+</div>
+
+<div class="summary-bar">
+  <div style="background:#dc2626;width:21.4%">P0 × 3</div>
+  <div style="background:#f59e0b;width:28.6%">P1 × 4</div>
+  <div style="background:#6366f1;width:50%">P2 × 7</div>
+</div>
+<p style="font-size:13px;color:#6b7280">共 14 个问题，其中 3 个为内容 Bug（影响正确性），4 个为工程缺陷（影响可运行性），7 个为覆盖度改进建议</p>
+
+<h2>📊 各课程评分概览</h2>
+
+<table>
+  <tr>
+    <th>课程</th>
+    <th>标题</th>
+    <th>字数</th>
+    <th>评分</th>
+    <th>P0</th>
+    <th>P1</th>
+    <th>P2</th>
+  </tr>
+  <tr><td>L02-01</td><td>Prompt 的解剖学</td><td>~3.2k</td><td class="stat-pass">8.2</td><td>0</td><td>1</td><td>2</td></tr>
+  <tr><td>L02-02</td><td>Few-shot 与 ICL</td><td>~3.5k</td><td class="stat-pass">8.5</td><td>0</td><td>0</td><td>2</td></tr>
+  <tr><td>L02-03</td><td>CoT 与推理增强</td><td>~3.8k</td><td class="stat-warn">7.0</td><td>1</td><td>0</td><td>2</td></tr>
+  <tr><td>L02-04</td><td>结构化输出</td><td>~5.0k</td><td class="stat-warn">7.5</td><td>1</td><td>1</td><td>2</td></tr>
+  <tr><td>L02-05</td><td>Prompt 测试与版本管理</td><td>~5.2k</td><td class="stat-fail">6.8</td><td>1</td><td>1</td><td>1</td></tr>
+  <tr><td>P2</td><td>智能文档摘要器</td><td>~5.5k</td><td class="stat-warn">7.5</td><td>0</td><td>1</td><td>1</td></tr>
+</table>
+
+<h2>🔴 P0：必须修复（内容 Bug）</h2>
+
+<div class="lesson-section">
+  <div class="lesson-header">
+    <span class="lesson-num">L02-03</span>
+    <span class="lesson-stats">Few-shot CoT 示例不完整 · <span class="stat-fail">P0</span></span>
+  </div>
+  <div class="issue-card p0">
+    <div class="issue-header">
+      <span class="badge p0">P0</span>
+      <span class="badge loc">L02-03 · 第 43-45 行</span>
+      <span class="issue-title">Few-shot CoT 第二个示例被截断，推理过程为空</span>
+    </div>
+    <div class="issue-body">
+      <p>Few-shot CoT 示例中，第二个问题展示了题目但 <code>推理：</code> 后面没有任何内容就被截断了：</p>
+      <pre>问题：一个班级有 30 个学生，其中 18 个喜欢数学，12 个喜欢语文，6 个两门都喜欢。问只喜欢数学的有多少人？
+推理：
+（到这里就没了）</pre>
+      <p>作为<strong>教学示例</strong>，这里应该展示完整的推理过程和答案，让读者理解 Few-shot CoT 的完整格式。当前写法让读者以为这是"留给模型填的空"，但在课程内容中展示示例时，必须给出完整对。</p>
+      <div class="fix-suggestion">
+        <strong>修复建议：</strong>补全第二个示例的推理和答案：
+        <pre>推理：喜欢数学的有 18 人，其中 6 人也喜欢语文，所以只喜欢数学的 = 18 - 6 = 12 人。
+答案：12 人。</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-section">
+  <div class="lesson-header">
+    <span class="lesson-num">L02-05</span>
+    <span class="lesson-stats">结构性错误：重复的要点总结 + 代码块位置错误 · <span class="stat-fail">P0</span></span>
+  </div>
+  <div class="issue-card p0">
+    <div class="issue-header">
+      <span class="badge p0">P0</span>
+      <span class="badge loc">L02-05 · 第 138-199 行 & 第 275-281 行</span>
+      <span class="issue-title">两个"要点总结"节 + run_prompt_tests 代码块被错误地放在总结之后</span>
+    </div>
+    <div class="issue-body">
+      <p>文件结构当前为：</p>
+      <pre>... Flaky Test 处理 ...
+→ 要点总结（第 138 行）        ← 第一个总结（7 条，内容更全）
+→ run_prompt_tests 代码块      ← 150 行代码被放在总结之后！
+→ Prompt 版本管理              ← 正文章节
+→ CI/CD 集成
+→ 要点总结（第 275 行）        ← 第二个总结（4 条，内容有删减）</pre>
+      <p><strong>问题</strong>：</p>
+      <ul>
+        <li>一节课出现两个"要点总结"，读者困惑哪个是正式的</li>
+        <li><code>run_prompt_tests</code> 函数代码（50 行）被放在第一个"要点总结"之后、正文章节之前，完全脱离上下文</li>
+        <li>两个总结内容不一致——第一个提到 LLM-as-Judge 偏差和 Flaky Test，第二个没有</li>
+      </ul>
+      <div class="fix-suggestion">
+        <strong>修复建议：</strong>
+        <ul>
+          <li>删除第一个"要点总结"（第 138-146 行）</li>
+          <li>将 <code>run_prompt_tests</code> 代码块移到"构建测试集"或"评估指标"小节内</li>
+          <li>保留文件末尾的"要点总结"，并补充第一个总结中有但第二个缺失的要点（LLM-as-Judge 偏差、Flaky Test 策略）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-section">
+  <div class="lesson-header">
+    <span class="lesson-num">L02-04</span>
+    <span class="lesson-stats">Anthropic Tool Use 代码硬编码索引 · <span class="stat-fail">P0</span></span>
+  </div>
+  <div class="issue-card p0">
+    <div class="issue-header">
+      <span class="badge p0">P0</span>
+      <span class="badge loc">L02-04 · 第 136-137 行</span>
+      <span class="issue-title">response.content[1] 硬编码索引，实际响应不保证 tool_use 在 index 1</span>
+    </div>
+    <div class="issue-body">
+      <p>当前代码：</p>
+      <pre>tool_result = response.content[1]  # tool_use block</pre>
+      <p>Anthropic 的响应 <code>content</code> 是一个 block 列表，可能包含 <code>TextBlock</code> 和 <code>ToolUseBlock</code>。当使用 <code>tool_choice={"type": "tool", "name": "extract_fruits"}</code> 强制调用时，模型通常（但不保证）先输出一段思考文本再输出 tool_use。硬编码 <code>[1]</code> 在某些情况下会取到错误的 block。</p>
+      <div class="fix-suggestion">
+        <strong>修复建议：</strong>按类型搜索 ToolUseBlock：
+        <pre>tool_result = next(
+    block for block in response.content
+    if block.type == "tool_use"
+)
+fruits_data = tool_result.input  # 已是 dict，无需 json.loads</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>🟡 P1：建议修复（工程缺陷）</h2>
+
+<div class="issue-card p1">
+  <div class="issue-header">
+    <span class="badge p1">P1</span>
+    <span class="badge loc">L02-01 · 第 97 行</span>
+    <span class="issue-title">CRISPE 框架 "E (Experiment)" 释义不准确</span>
+  </div>
+  <div class="issue-body">
+    <p>当前将 E 解释为"如果一次回答不够，请追问更多细节"。CRISPE 框架中 E 的标准含义是让模型<strong>提供多种实验性方案/变体</strong>供选择，而非追问。当前释义更接近"迭代"而非"实验"。</p>
+    <div class="fix-suggestion">
+      <strong>修复建议：</strong>改为"请提供 2-3 种不同思路的方案，标注各自优劣"或"如果有多种可行方案，请列出供选择"。
+    </div>
+  </div>
+</div>
+
+<div class="issue-card p1">
+  <div class="issue-header">
+    <span class="badge p1">P1</span>
+    <span class="badge loc">L02-04 · 第 73-91 行</span>
+    <span class="issue-title">OpenAI Structured Outputs 示例缺少 additionalProperties: false</span>
+  </div>
+  <div class="issue-body">
+    <p>OpenAI 的 <code>strict: true</code> 模式<strong>要求</strong> Schema 中所有 object 都设置 <code>"additionalProperties": false</code>，否则 API 会报错。当前示例的 schema 缺少此字段，读者直接运行会遇到 <code>400 Invalid schema</code> 错误。</p>
+    <div class="fix-suggestion">
+      <strong>修复建议：</strong>在每个 <code>"type": "object"</code> 的 properties 同级添加 <code>"additionalProperties": false</code>。
+    </div>
+  </div>
+</div>
+
+<div class="issue-card p1">
+  <div class="issue-header">
+    <span class="badge p1">P1</span>
+    <span class="badge loc">P2 · Step 7 · 第 234 行</span>
+    <span class="issue-title">run_version 函数 hasattr 检查有作用域 bug</span>
+  </div>
+  <div class="issue-body">
+    <p>当前代码：</p>
+    <pre>result_entities = [e.value for e in result.entities] if hasattr(e, 'value') else [e["value"] for e in result.get("entities", [])]</pre>
+    <p>三元表达式条件 <code>hasattr(e, 'value')</code> 中的 <code>e</code> 在此时尚未定义——它在列表推导式内部才存在。这段代码会抛 <code>NameError</code>。</p>
+    <div class="fix-suggestion">
+      <strong>修复建议：</strong>根据函数签名区分 v1（返回 dict）和 v2（返回 Pydantic 模型）：
+      <pre>if hasattr(result, 'entities'):  # Pydantic 模型 (v2)
+    result_entities = [e.value for e in result.entities]
+else:  # dict (v1)
+    result_entities = [e["value"] for e in result.get("entities", [])]</pre>
+    </div>
+  </div>
+</div>
+
+<div class="issue-card p1">
+  <div class="issue-header">
+    <span class="badge p1">P1</span>
+    <span class="badge loc">P2 · Step 6 · 第 199 行</span>
+    <span class="issue-title">空文档测试用例被直接跳过，未真正测试边界情况</span>
+  </div>
+  <div class="issue-body">
+    <p><code>test_document_analysis</code> 中 <code>if not tc["input"].strip(): return</code> 直接跳过空输入测试。但 <code>tc_edge_001</code> 存在的意义就是验证系统对空输入的处理——应该测试 <code>analyze_document("")</code> 不崩溃、返回空实体列表，而非跳过。</p>
+    <div class="fix-suggestion">
+      <strong>修复建议：</strong>改为：
+      <pre>if not tc["input"].strip():
+    result = analyze_document(tc["input"])
+    assert len(result.entities) == 0
+    assert len(result.key_points) == 0
+    return</pre>
+    </div>
+  </div>
+</div>
+
+<h2>🔵 P2：锦上添花（覆盖度改进）</h2>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-01</span>
+    <span class="issue-title">缺少"常见反模式"小节</span>
+  </div>
+  <div class="issue-body">课程展示了好 Prompt 和差 Prompt 的对比，但没有系统列出常见反模式（如：指令模糊、示例格式不一致、输出格式嵌套过深、Prompt 过长导致注意力稀释等）。一个"不该怎么写"的检查清单能帮助读者避坑。</div>
+</div>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-01</span>
+    <span class="issue-title">缺少 System Prompt vs User Prompt 的分工指引</span>
+  </div>
+  <div class="issue-body">课程提到"安全规则放 System Prompt"，但没有系统讲解哪些内容应该放 System、哪些放 User、哪些放 Few-shot。M3-L03-01 会深入讲 System Prompt 架构，但 M2 作为入门应该给出基本分工原则。</div>
+</div>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-02</span>
+    <span class="issue-title">动态示例选择缺少完整可运行示例</span>
+  </div>
+  <div class="issue-body"><code>select_examples</code> 函数用了 <code>embed()</code> 和 <code>cosine_similarity()</code> 伪函数。建议用 <code>openai.embeddings.create</code> + <code>numpy.dot</code> 给出可运行的完整代码，或明确标注"伪代码，M4 会实现"。</div>
+</div>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-02</span>
+    <span class="issue-title">缺少"Few-shot 负迁移"的讨论</span>
+  </div>
+  <div class="issue-body">当示例与目标任务不匹配时，Few-shot 可能比 Zero-shot 更差（负迁移）。课程讲了示例偏差，但没有明确提到"Few-shot 不是万能的"，建议补充一句关于负迁移的提醒。</div>
+</div>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-03</span>
+    <span class="issue-title">缺少 Auto-CoT 简介</span>
+  </div>
+  <div class="issue-body">Auto-CoT（Zhang et al. 2022）自动构建 CoT 示例，是 CoT 领域的重要进展。ToT 已经提到了，Auto-CoT 也值得一句话简介，保持前沿覆盖的完整性。</div>
+</div>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-04</span>
+    <span class="issue-title">缺少 Gemini 的结构化输出支持</span>
+  </div>
+  <div class="issue-body">课程覆盖了 OpenAI 和 Anthropic 的结构化输出方案，但缺少 Google Gemini 的 <code>response_schema</code> 支持。三家主流 API 都覆盖会更完整。</div>
+</div>
+
+<div class="issue-card p2">
+  <div class="issue-header">
+    <span class="badge p2">P2</span>
+    <span class="badge loc">L02-05</span>
+    <span class="issue-title">Prompt 文件使用了虚构模型名 "claude-sonnet-5"</span>
+  </div>
+  <div class="issue-body">第 222 行 <code>"model": "claude-sonnet-5"</code> 是不存在的模型名。应使用真实模型名如 <code>claude-sonnet-4-20250514</code> 或标注为示例占位符。另外缺少"模型版本升级时的回归测试"讨论——换模型后需要重跑测试集验证。</div>
+</div>
+
+<h2>✅ 做得好的地方</h2>
+
+<table>
+  <tr><th>维度</th><th>评价</th></tr>
+  <tr><td>课程结构</td><td>L01→L05 的递进合理：结构 → 示例 → 推理 → 结构化输出 → 测试，从"写 Prompt"到"工程化管理 Prompt"</td></tr>
+  <tr><td>深入浅出</td><td>类比生动且准确："开卷考试"、"不写过程直接交卷"、"带参数的函数"。无术语堆砌。</td></tr>
+  <tr><td>代码质量</td><td>大部分代码可运行且实用，不是玩具示例。instructor、pytest、CI/CD 都是生产级工具。</td></tr>
+  <tr><td>对比表格</td><td>每节课都有高质量对比表（Few-shot vs 微调、四种结构化输出方法、评估指标分类），信息密度高。</td></tr>
+  <tr><td>交叉引用</td><td>前后引用到位：M03-05（缓存）、M16-03（微调）、M5（ReAct）、M13（护栏）、P3（后续项目），形成知识网。</td></tr>
+  <tr><td>成本意识</td><td>L02-02 的 Token 成本计算、L02-03 的 CoT 成本量化（10-30 倍），培养工程成本意识。</td></tr>
+  <tr><td>项目设计</td><td>P2 把 5 节课的知识点全部串联：Prompt 模板 → Few-shot → 结构化输出 → 测试集 → 版本对比，学以致用。</td></tr>
+</table>
+
+<h2>📋 修复优先级建议</h2>
+
+<table>
+  <tr><th>优先级</th><th>问题</th><th>预估工作量</th></tr>
+  <tr><td>🔴 立即</td><td>L02-03 Few-shot CoT 示例补全</td><td>2 分钟</td></tr>
+  <tr><td>🔴 立即</td><td>L02-05 删除重复总结 + 移动代码块</td><td>5 分钟</td></tr>
+  <tr><td>🔴 立即</td><td>L02-04 Anthropic Tool Use 索引修复</td><td>3 分钟</td></tr>
+  <tr><td>🟡 本轮</td><td>L02-01 CRISPE "E" 释义修正</td><td>2 分钟</td></tr>
+  <tr><td>🟡 本轮</td><td>L02-04 补充 additionalProperties: false</td><td>3 分钟</td></tr>
+  <tr><td>🟡 本轮</td><td>P2 Step 7 hasattr bug 修复</td><td>3 分钟</td></tr>
+  <tr><td>🟡 本轮</td><td>P2 空文档测试修复</td><td>3 分钟</td></tr>
+  <tr><td>🔵 后续</td><td>7 个 P2 改进项</td><td>合计 ~30 分钟</td></tr>
+</table>
+
+<div class="footer">
+  <p>Review 生成时间：2026-07-23 | 审查范围：M2 全部内容（5 课 + 1 项目）</p>
+</div>
+
+</div>
+</body>
+</html>
